@@ -5,6 +5,7 @@ import { InputScreen } from './components/InputScreen';
 import { ModelScreen } from './components/ModelScreen';
 import { SettingsDialog, type Settings, defaultSettings } from './components/SettingsDialog';
 import { load, save } from './lib/storage';
+import { usePalette } from './lib/theme';
 import type { Problem } from './solver/types';
 
 type Stage = { name: 'input' } | { name: 'confirm' } | { name: 'model' } | { name: 'soon'; reason: string };
@@ -14,6 +15,8 @@ export default function App() {
   const [problem, setProblem] = useState<Problem | null>(() => load<{ p: Problem | null }>('last', { p: null }).p);
   const [settings, setSettings] = useState<Settings>(() => load('settings', defaultSettings));
   const [showSettings, setShowSettings] = useState(false);
+  const C = usePalette(settings.theme);
+  const dark = C.dark;
 
   const updateProblem = (p: Problem) => {
     setProblem(p);
@@ -35,6 +38,14 @@ export default function App() {
           <span className={stage.name === 'confirm' ? 'on' : ''}>2 Confirm values</span>
           <span className={stage.name === 'model' ? 'on' : ''}>3 Model</span>
         </nav>
+        <button
+          className="ghost theme-toggle"
+          title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+          onClick={() => updateSettings({ ...settings, theme: dark ? 'light' : 'dark' })}
+        >
+          {dark ? '☀' : '☾'}
+        </button>
         <button className="ghost" onClick={() => setShowSettings(true)}>
           ⚙ Settings
         </button>
@@ -64,7 +75,7 @@ export default function App() {
           />
         )}
         {stage.name === 'model' && problem && (
-          <ModelScreen problem={problem} onChange={updateProblem} settings={settings} onEdit={() => setStage({ name: 'confirm' })} />
+          <ModelScreen problem={problem} onChange={updateProblem} settings={settings} onEdit={() => setStage({ name: 'confirm' })} C={C} />
         )}
         {stage.name === 'soon' && <ComingSoon reason={stage.reason} onBack={() => setStage({ name: 'input' })} />}
       </main>

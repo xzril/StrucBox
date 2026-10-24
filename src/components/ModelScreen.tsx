@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { aiAvailable, postJson } from '../input/api';
 import { conventionText } from '../lib/format';
+import type { Palette } from '../lib/theme';
 import { buildReport, sampleDiagram, type ResultLine } from '../lib/report';
 import { eiInProblemUnits, toDeflectionUnit, unitStr } from '../lib/units';
 import { solve } from '../solver/solve';
@@ -15,9 +16,10 @@ interface Props {
   settings: Settings;
   onChange: (p: Problem) => void;
   onEdit: () => void;
+  C: Palette;
 }
 
-export function ModelScreen({ problem: p, settings, onChange, onEdit }: Props) {
+export function ModelScreen({ problem: p, settings, onChange, onEdit, C }: Props) {
   const [showSolution, setShowSolution] = useState(false);
   const [showUnasked, setShowUnasked] = useState(false);
   const [bend, setBend] = useState(true);
@@ -94,7 +96,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit }: Props) {
             <button onClick={onEdit}>Edit values</button>
           </div>
         </div>
-        <BeamView3D problem={p} solution={s} showSolution={showSolution} bend={bend} onMoveLoad={moveLoad} />
+        <BeamView3D problem={p} solution={s} showSolution={showSolution} bend={bend} onMoveLoad={moveLoad} C={C} />
         {showSolution ? (
           diagrams.map((d) =>
             d.key === 'shear' ? (
@@ -105,7 +107,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit }: Props) {
                 length={p.length}
                 xUnit={u.length}
                 yUnit={unitStr.force(u)}
-                color="#1c7ed6"
+                color={C.shear}
                 marks={marks}
               />
             ) : d.key === 'moment' ? (
@@ -116,7 +118,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit }: Props) {
                 length={p.length}
                 xUnit={u.length}
                 yUnit={unitStr.moment(u)}
-                color="#d9480f"
+                color={C.bending}
                 marks={marks}
               />
             ) : (
@@ -127,7 +129,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit }: Props) {
                 length={p.length}
                 xUnit={u.length}
                 yUnit={ei ? report.deflection.unit : `${u.force}·${u.length}³ / EI`}
-                color="#2b8a3e"
+                color={C.deflection}
                 marks={[...s.breakpoints, s.min.EIy.x, s.max.EIy.x]}
               />
             ),

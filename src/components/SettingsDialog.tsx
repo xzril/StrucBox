@@ -1,10 +1,12 @@
 import { conventionText, defaultConvention, type SignConvention } from '../lib/format';
+import type { ThemePref } from '../lib/theme';
 
 export interface Settings extends SignConvention {
   defaultSystem: 'SI' | 'US';
+  theme: ThemePref;
 }
 
-export const defaultSettings: Settings = { ...defaultConvention, defaultSystem: 'SI' };
+export const defaultSettings: Settings = { ...defaultConvention, defaultSystem: 'SI', theme: 'system' };
 
 export function SettingsDialog({ settings, onChange, onClose }: { settings: Settings; onChange: (s: Settings) => void; onClose: () => void }) {
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => onChange({ ...settings, [k]: v });
@@ -12,6 +14,15 @@ export function SettingsDialog({ settings, onChange, onClose }: { settings: Sett
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Settings</h2>
+        <h3>Appearance</h3>
+        <label className="row">
+          <span>Theme</span>
+          <select value={settings.theme} onChange={(e) => set('theme', e.target.value as ThemePref)}>
+            <option value="system">Match my computer</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
         <h3>Sign convention</h3>
         <label className="row">
           <span>Positive moment</span>

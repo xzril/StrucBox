@@ -1,16 +1,42 @@
 :root {
-  --bg: #eef1f4;
-  --card: #fff;
-  --text: #1f2933;
-  --muted: #66727f;
-  --line: #d9dee4;
-  --accent: #1c7ed6;
-  --accent-text: #fff;
+  /* two-tone: blueprint navy (primary) + safety amber (accent); see src/lib/theme.ts */
+  --bg: #f3f5f9;
+  --card: #ffffff;
+  --card-2: #eef2f8;
+  --text: #14213d;
+  --muted: #5a6478;
+  --line: #d6dce6;
+  --primary: #1d4e89;
+  --primary-soft: #e3ecf7;
+  --on-primary: #ffffff;
+  --amber: #e8890c;
+  --amber-text: #b45309;
+  --bar: #14213d;
   --error: #c92a2a;
-  --warn: #b35c00;
+  --warn: #b45309;
+  --accent: var(--primary);
+  --accent-text: var(--on-primary);
+  color-scheme: light;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
+}
+:root[data-theme='dark'] {
+  --bg: #0e1626;
+  --card: #16213a;
+  --card-2: #1d2b48;
+  --text: #e6ebf5;
+  --muted: #9aa7bd;
+  --line: #2b3a5a;
+  --primary: #6fa8ff;
+  --primary-soft: #1d2f52;
+  --on-primary: #0b1220;
+  --amber: #ffb020;
+  --amber-text: #ffc04d;
+  --bar: #0b1220;
+  --error: #ff8787;
+  --warn: #ffc04d;
+  color-scheme: dark;
 }
 * {
   box-sizing: border-box;
@@ -35,7 +61,7 @@ button {
   font: inherit;
   padding: 0.45rem 0.9rem;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--text);
   border-radius: 6px;
   cursor: pointer;
@@ -72,7 +98,7 @@ textarea {
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--line);
   border-radius: 5px;
-  background: #fff;
+  background: var(--card);
   color: var(--text);
 }
 input[type='number'] {
@@ -107,8 +133,9 @@ textarea {
   align-items: center;
   gap: 1rem;
   padding: 0.5rem 1rem;
-  background: #1f2933;
+  background: var(--bar);
   color: #fff;
+  border-bottom: 3px solid var(--amber);
 }
 .topbar .brand {
   background: none;
@@ -118,7 +145,7 @@ textarea {
   font-size: 1.1rem;
 }
 .topbar .logo {
-  color: #74c0fc;
+  color: var(--amber);
 }
 .topbar .ghost {
   color: #fff;
@@ -128,7 +155,7 @@ textarea {
   display: flex;
   gap: 1rem;
   font-size: 0.85rem;
-  color: #9aa5b1;
+  color: #9fb0cc;
 }
 .topbar .steps .on {
   color: #fff;
@@ -214,7 +241,7 @@ main {
 .progress {
   position: relative;
   height: 22px;
-  background: #e9ecef;
+  background: var(--card-2);
   border-radius: 4px;
   margin-top: 0.5rem;
   overflow: hidden;
@@ -223,7 +250,7 @@ main {
 .progress div {
   position: absolute;
   inset: 0 auto 0 0;
-  background: #a5d8ff;
+  background: var(--primary-soft);
 }
 .progress span {
   position: relative;
@@ -272,7 +299,7 @@ table.edit td {
   margin: 0 0 1rem;
   padding: 0.6rem 0.9rem;
   border-left: 3px solid var(--accent);
-  background: #f5f9fd;
+  background: var(--primary-soft);
   font-size: 0.92rem;
 }
 
@@ -308,7 +335,7 @@ table.edit td {
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
-  background: #f4f6f8;
+  background: var(--bg);
 }
 .view3d.dragging {
   cursor: grabbing;
@@ -336,18 +363,19 @@ table.edit td {
   border-radius: 4px;
   pointer-events: none;
   user-select: none;
-  background: rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--card) 85%, transparent);
 }
 .load-label {
-  color: #d9480f;
+  color: var(--amber-text);
   font-weight: 600;
 }
 .reaction-label {
-  color: #2b8a3e;
+  color: var(--primary);
   font-weight: 600;
 }
 .moment-label {
-  color: #a87700;
+  color: var(--amber-text);
+  font-style: italic;
   font-weight: 600;
 }
 .support-label {
@@ -356,7 +384,7 @@ table.edit td {
 }
 .diagram {
   margin: 0.8rem 0 0;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 0.5rem 0.8rem 0.2rem;
@@ -399,7 +427,7 @@ table.results td {
   display: inline-block;
   min-width: 4rem;
   text-align: center;
-  background: #e9ecef;
+  background: var(--card-2);
   border-radius: 4px;
   color: var(--muted);
 }
@@ -442,7 +470,7 @@ table.results td {
   z-index: 10;
 }
 .modal {
-  background: #fff;
+  background: var(--card);
   border-radius: 10px;
   padding: 1.4rem;
   width: min(480px, 92vw);
@@ -463,4 +491,52 @@ table.results td {
   .topbar .steps {
     display: none;
   }
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.topbar .ghost.theme-toggle {
+  margin-left: auto;
+}
+.topbar .ghost.theme-toggle + .ghost {
+  margin-left: 0;
+}
+.theme-toggle {
+  font-size: 1.05rem;
+  padding: 0.3rem 0.6rem;
+}
+.plan {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #9fb0cc;
+  color: #cfd9ea;
+}
+.plan.premium {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #14213d;
+}
+.tools {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border-radius: 8px;
+  background: var(--card-2);
+}
+.tools h3 {
+  margin-top: 0;
+}
+.locked {
+  color: var(--muted);
+  font-size: 0.85rem;
 }

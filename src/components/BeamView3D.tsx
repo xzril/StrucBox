@@ -3,6 +3,7 @@ import { Canvas, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { fmt, rotWord } from '../lib/format';
+import type { Palette } from '../lib/theme';
 import { eiInProblemUnits, unitStr } from '../lib/units';
 import { momentAboutPoint, pointX, valueAt, type Solution } from '../solver/solve';
 import { totalDownward } from '../solver/loads';
@@ -11,7 +12,6 @@ import type { Load, Problem } from '../solver/types';
 const BEAM_W = 10; // world length of the beam
 const H = 0.36; // beam depth
 const D = 0.5; // beam width
-const C = { beam: '#8fa3b8', load: '#d9480f', reaction: '#2b8a3e', support: '#495057', moment: '#e8a400', handle: '#1c7ed6' };
 
 interface Props {
   problem: Problem;
@@ -19,11 +19,12 @@ interface Props {
   showSolution: boolean;
   bend: boolean;
   onMoveLoad: (l: Load) => void;
+  C: Palette;
 }
 
 type Drag = { id: string; mode: 'move' | 'start' | 'end'; offset: number };
 
-export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMoveLoad }: Props) {
+export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMoveLoad, C }: Props) {
   const L = p.length;
   const S = BEAM_W / L;
   const wx = (x: number) => x * S - BEAM_W / 2;
@@ -84,17 +85,17 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
   return (
     <div className={`view3d ${drag ? 'dragging' : ''}`}>
       <Canvas camera={{ position: [0, 1, 9.5], fov: 45 }} dpr={[1, 2]}>
-        <color attach="background" args={['#f4f6f8']} />
+        <color attach="background" args={[C.bg]} />
         <ambientLight intensity={0.7} />
         <directionalLight position={[4, 8, 6]} intensity={1.1} />
         <OrbitControls ref={controls as never} enabled={!drag} target={[0, -0.2, 0]} />
-        <gridHelper args={[30, 30, '#d0d7de', '#e3e8ed']} position={[0, -2.6, 0]} />
+        <gridHelper key={C.bg} args={[30, 30, C.grid[0], C.grid[1]]} position={[0, -2.6, 0]} />
 
-        <DeformedBeam bx={bx} dy={dy} />
+        <DeformedBeam bx={bx} dy={dy} color={C.beam} />
 
         {p.supports.map((sp) => (
           <group key={sp.id} position={[wx(sp.x), bottom(sp.x), 0]}>
-            <SupportGlyph type={sp.type} atRight={sp.x > L / 2} />
+            <SupportGlyph type={sp.type} atRight={sp.x > L / 2} color={C.support} />
             <Html position={[sp.x > L / 2 ? 0.55 : -0.55, -0.35, D]} center className="label support-label">
               {sp.label}
             </Html>
@@ -241,7 +242,7 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
   );
 }
 
-function DeformedBeam({ bx, dy }: { bx: (w: number) => number; dy: (x: number) => number }) {
+function DeformedBeam({ bx, dy, color }: { bx: (w: number) => number; dy: (x: number) => number; color: string }) {
   const geom = useMemo(() => new THREE.BoxGeometry(BEAM_W, H, D, 200, 1, 1), []);
   const base = useMemo(() => Float32Array.from(geom.attributes.position.array as Float32Array), [geom]);
   const ref = useRef<THREE.Mesh>(null);
@@ -254,7 +255,7 @@ function DeformedBeam({ bx, dy }: { bx: (w: number) => number; dy: (x: number) =
   });
   return (
     <mesh ref={ref} geometry={geom}>
-      <meshStandardMaterial color={C.beam} metalness={0.2} roughness={0.6} />
+      <meshStandardMaterial color={color} metalness={0.2} roughness={0.6} />
     </mesh>
   );
 }
@@ -307,7 +308,7 @@ function MomentArc({ r, dir, color }: { r: number; dir: 'cw' | 'ccw'; color: str
   );
 }
 
-function SupportGlyph({ type, atRight }: { type: Problem['supports'][number]['type']; atRight: boolean }) {
+function SupportGlyph({ type, atRight, color }: { type: Problem['supports'][number]['type']; atRight: boolean; color: string }) {
   const tri = useMemo(() => {
     const s = new THREE.Shape();
     s.moveTo(0, 0);
@@ -316,7 +317,7 @@ function SupportGlyph({ type, atRight }: { type: Problem['supports'][number]['ty
     s.closePath();
     return s;
   }, []);
-  const mat = <meshStandardMaterial color={C.support} />;
+  const mat = <meshStandardMaterial color={color} />;
   if (type === 'free') return null;
   if (type === 'fixed')
     return (
