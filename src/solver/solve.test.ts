@@ -106,3 +106,12 @@ describe('unsupported problems', () => {
     if (!r.ok) expect(r.comingSoon).toBe(false);
   });
 });
+
+describe('cantilever triangular load deflection (tables)', () => {
+  const tip = (w1: number, w2: number) => {
+    const s = ok(beam(15, [sup('fixed', 0, 'A'), sup('free', 15, 'B')], [dist(0, 15, w1, w2)]));
+    return valueAt(s.segments, 15, 'EIy');
+  };
+  it('peak at the fixed end: w0L⁴/30EI', () => close(tip(2, 0), -(2 * 15 ** 4) / 30));
+  it('peak at the free end: 11w0L⁴/120EI', () => close(tip(0, 2), -(11 * 2 * 15 ** 4) / 120));
+});
