@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { fmt, rotWord } from '../lib/format';
 import type { Palette } from '../lib/theme';
-import { eiInProblemUnits, unitStr } from '../lib/units';
+import { bendScale } from '../lib/bend';
+import { unitStr } from '../lib/units';
 import { momentAboutPoint, pointX, valueAt, type Solution } from '../solver/solve';
 import { totalDownward } from '../solver/loads';
 import type { Load, Problem } from '../solver/types';
@@ -33,11 +34,7 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
   const u = p.units;
 
   // deflection scale (D14): true scale when visible, else exaggerated with a notice
-  const ei = p.stiffness ? eiInProblemUnits(p.stiffness, p.units) : undefined;
-  const maxEIy = Math.max(Math.abs(s.min.EIy.value), Math.abs(s.max.EIy.value));
-  const trueMax = ei ? (maxEIy / ei) * S : 0;
-  const trueScale = !!ei && trueMax >= 0.3; // below ~3% of the span the bend is hard to see
-  const k = maxEIy < 1e-12 ? 0 : trueScale ? S / ei! : 0.6 / maxEIy;
+  const { k, trueScale } = bendScale(p, s, S);
   const dy = (x: number) => (bend ? valueAt(s.segments, x, 'EIy') * k : 0);
   const note = !bend ? '' : trueScale ? 'Deflection drawn to true scale.' : 'Deflection not to scale, exaggerated for visualization.';
 
@@ -89,7 +86,15 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
         <ambientLight intensity={0.7} />
         <directionalLight position={[4, 8, 6]} intensity={1.1} />
         <OrbitControls ref={controls as never} enabled={!drag} target={[0, -0.2, 0]} />
-        <gridHelper key={C.bg} args={[30, 30, C.grid[0], C.grid[1]]} position={[0, -2.6, 0]} />
+        <gridHelper key={C.bg} args={[30, 30, C.grid[0], C.grid[1]]} position={[0, -3.3, 0]} />
+
+        <Dimensions
+          xs={[0, L, ...p.supports.map((sp) => sp.x), ...p.loads.flatMap((l) => (l.kind === 'dist' ? [l.x1, l.x2] : [l.x]))]}
+          wx={wx}
+          S={S}
+          unit={u.length}
+          color={C.support}
+        />
 
         <DeformedBeam bx={bx} dy={dy} color={C.beam} />
 
@@ -239,6 +244,46 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
       </div>
       {note && <div className="view-note">{note}</div>}
     </div>
+  );
+}
+
+/** Dimension line under the beam: a tick at every support and load position, the length of each
+ * part, and the full span under it. */
+function Dimensions({ xs, wx, S, unit, color }: { xs: number[]; wx: (x: number) => number; S: number; unit: string; color: string }) {
+  const ticks = [...new Set(xs.map((x) => +x.toFixed(6)))].sort((a, b) => a - b);
+  const y = -2.3;
+  const z = 0.45;
+  const line = (pts: [number, number][]) => (
+    <Line points={pts.map(([x, yy]) => [x, yy, z] as [number, number, number])} color={color} lineWidth={1.5} />
+  );
+  return (
+    <group>
+      {line([[wx(ticks[0]), y], [wx(ticks[ticks.length - 1]), y]])}
+      {ticks.map((x) => (
+        <group key={x}>{line([[wx(x), y - 0.12], [wx(x), y + 0.12]])}</group>
+      ))}
+      {ticks.slice(1).map((b, i) => {
+        const a = ticks[i];
+        // shortcut: parts narrower than ~5% of the drawn span get no label; the full span and d labels still show
+        if ((b - a) * S < 0.5) return null;
+        return (
+          <Html key={b} position={[wx((a + b) / 2), y - 0.3, z]} center className="label dim-label">
+            {fmt(b - a)} {unit}
+          </Html>
+        );
+      })}
+      {ticks.length > 2 && (
+        <>
+          {line([[wx(ticks[0]), y - 0.7], [wx(ticks[ticks.length - 1]), y - 0.7]])}
+          {[ticks[0], ticks[ticks.length - 1]].map((x) => (
+            <group key={x}>{line([[wx(x), y - 0.82], [wx(x), y - 0.58]])}</group>
+          ))}
+          <Html position={[0, y - 1.0, z]} center className="label dim-label">
+            L = {fmt(ticks[ticks.length - 1] - ticks[0])} {unit}
+          </Html>
+        </>
+      )}
+    </group>
   );
 }
 

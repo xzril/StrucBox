@@ -378,6 +378,10 @@ table.edit td {
   font-style: italic;
   font-weight: 600;
 }
+.dim-label {
+  color: var(--muted);
+  font-size: 11px;
+}
 .support-label {
   font-weight: 700;
   background: none;
@@ -451,6 +455,32 @@ table.results td {
 .explain {
   font-size: 0.92rem;
   line-height: 1.5;
+}
+
+.positions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.2rem;
+  align-items: center;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 0.9rem;
+}
+.positions label {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.positions span:first-child {
+  font-weight: 600;
+  color: var(--amber-text);
+}
+input.bad {
+  border-color: var(--error);
 }
 
 /* coming soon + modal */

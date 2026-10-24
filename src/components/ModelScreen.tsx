@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { postJson, providerName, type Plan } from '../input/api';
-import { conventionText } from '../lib/format';
+import { conventionText, fmt } from '../lib/format';
 import type { Palette } from '../lib/theme';
 import { buildReport, sampleDiagram, type ResultLine } from '../lib/report';
 import { eiInProblemUnits, toDeflectionUnit, unitStr } from '../lib/units';
@@ -25,6 +25,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
   const [showUnasked, setShowUnasked] = useState(false);
   const [bend, setBend] = useState(true);
   const [ai, setAi] = useState<{ key: string; text?: string; error?: string; loading?: boolean } | null>(null);
+  const [typePos, setTypePos] = useState(false);
   const [question, setQuestion] = useState('');
   const [tutor, setTutor] = useState<{ q: string; text?: string; error?: string; loading?: boolean } | null>(null);
 
@@ -109,9 +110,36 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
             <label>
               <input type="checkbox" checked={bend} onChange={(e) => setBend(e.target.checked)} /> Bend the beam
             </label>
+            <button className={typePos ? 'primary' : ''} onClick={() => setTypePos(!typePos)}>
+              ✎ Type load positions
+            </button>
             <button onClick={onEdit}>Edit values</button>
           </div>
         </div>
+        {typePos && (
+          <div className="positions">
+            {p.loads.map((l, i) => {
+              const name = l.label || `Load ${i + 1}`;
+              const at = (lo: number, hi: number, x: number, set: (x: number) => Load) => (
+                <PosInput value={x} lo={lo} hi={hi} onCommit={(x) => moveLoad(set(x))} />
+              );
+              return (
+                <label key={l.id}>
+                  <span>{name}</span>
+                  {l.kind === 'dist' ? (
+                    <>
+                      x₁ {at(0, l.x2 - 1e-9, l.x1, (x1) => ({ ...l, x1 }))} to x₂ {at(l.x1 + 1e-9, p.length, l.x2, (x2) => ({ ...l, x2 }))}
+                    </>
+                  ) : (
+                    <>x = {at(0, p.length, l.x, (x) => ({ ...l, x }))}</>
+                  )}{' '}
+                  {u.length}
+                </label>
+              );
+            })}
+            <span className="muted small">x is measured from the left end (0 to {fmt(p.length)} {u.length}).</span>
+          </div>
+        )}
         <BeamView3D problem={p} solution={s} showSolution={showSolution} bend={bend} onMoveLoad={moveLoad} C={C} />
         {showSolution ? (
           diagrams.map((d) =>
@@ -237,6 +265,31 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
         </section>
       </aside>
     </div>
+  );
+}
+
+/** Number box that only passes on values inside [lo, hi], so a half-typed value never breaks the model. */
+function PosInput({ value, lo, hi, onCommit }: { value: number; lo: number; hi: number; onCommit: (x: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const n = Number(draft);
+  const bad = draft !== null && (draft.trim() === '' || !Number.isFinite(n) || n < lo || n > hi);
+  return (
+    <input
+      type="number"
+      step="any"
+      min={lo}
+      max={hi}
+      className={bad ? 'bad' : ''}
+      title={bad ? `Enter a value from ${fmt(lo)} to ${fmt(hi)}` : undefined}
+      value={draft ?? value}
+      onChange={(e) => {
+        const t = e.target.value;
+        setDraft(t);
+        const x = Number(t);
+        if (t.trim() !== '' && Number.isFinite(x) && x >= lo && x <= hi && x !== value) onCommit(x);
+      }}
+      onBlur={() => setDraft(null)}
+    />
   );
 }
 
