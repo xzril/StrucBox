@@ -36,6 +36,7 @@ button {
   padding: 0.45rem 0.9rem;
   border: 1px solid var(--line);
   background: #fff;
+  color: var(--text);
   border-radius: 6px;
   cursor: pointer;
 }
@@ -301,6 +302,7 @@ table.edit td {
 }
 .view3d {
   position: relative;
+  isolation: isolate; /* keeps the 3D labels (huge z-index from drei Html) under dialogs */
   height: 52vh;
   min-height: 340px;
   border: 1px solid var(--line);
@@ -413,15 +415,10 @@ table.results td {
 }
 .tex-block {
   display: block;
-  overflow-x: auto;
-  font-size: 0.92rem;
-}
-.tex-block .katex-display {
   margin: 0.3rem 0;
-  text-align: left;
-}
-.tex-block .katex-display > .katex {
-  text-align: left;
+  overflow-x: auto;
+  overflow-y: hidden;
+  font-size: 0.92rem;
 }
 .explain {
   font-size: 0.92rem;

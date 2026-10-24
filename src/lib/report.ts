@@ -277,9 +277,12 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
 /** Sampled diagram data for drawing, in display sign convention. */
 export function sampleDiagram(s: Solution, field: 'V' | 'M' | 'EIy', c: SignConvention, perSeg = 40): [number, number][] {
   const pts: [number, number][] = [];
+  // include the extrema so the diagram can label their exact values
+  const extrema = [s.min[field].x, s.max[field].x];
   for (const seg of s.segments) {
-    for (let i = 0; i <= perSeg; i++) {
-      const x = seg.a + ((seg.b - seg.a) * i) / perSeg;
+    const xs = Array.from({ length: perSeg + 1 }, (_, i) => seg.a + ((seg.b - seg.a) * i) / perSeg);
+    xs.push(...extrema.filter((x) => x > seg.a && x < seg.b && !xs.includes(x)));
+    for (const x of xs.sort((p, q) => p - q)) {
       const v = valueAt([seg], x, field);
       pts.push([x, field === 'EIy' ? v : showInternal(v, c)]);
     }

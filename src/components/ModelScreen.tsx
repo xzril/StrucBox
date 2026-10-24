@@ -122,7 +122,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit }: Props) {
             ) : (
               <Diagram
                 key="y"
-                title={ei ? 'Deflection' : 'Deflection × EI'}
+                title="Deflection"
                 points={deflPoints}
                 length={p.length}
                 xUnit={u.length}

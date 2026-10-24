@@ -46,6 +46,7 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
     return () => window.removeEventListener('pointerup', up);
   }, []);
 
+  const controls = useRef<{ enabled: boolean } | null>(null);
   const step = snapStep(L);
   const onDragMove = (e: ThreeEvent<PointerEvent>) => {
     if (!drag) return;
@@ -67,6 +68,8 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
   };
   const grab = (l: Load, mode: Drag['mode']) => (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
+    // disable now: waiting for the re-render lets the first pointer moves rotate the camera
+    if (controls.current) controls.current.enabled = false;
     const at = l.kind === 'dist' ? (mode === 'end' ? l.x2 : l.x1) : l.x;
     setDrag({ id: l.id, mode, offset: mode === 'move' ? bx(e.point.x) - at : 0 });
   };
@@ -84,7 +87,7 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
         <color attach="background" args={['#f4f6f8']} />
         <ambientLight intensity={0.7} />
         <directionalLight position={[4, 8, 6]} intensity={1.1} />
-        <OrbitControls enabled={!drag} target={[0, -0.2, 0]} />
+        <OrbitControls ref={controls as never} enabled={!drag} target={[0, -0.2, 0]} />
         <gridHelper args={[30, 30, '#d0d7de', '#e3e8ed']} position={[0, -2.6, 0]} />
 
         <DeformedBeam bx={bx} dy={dy} />
@@ -148,6 +151,11 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
                   <mesh key={m} position={[wx(x), top(x) + hAt(x), 0]} onPointerDown={grab(l, m)}>
                     <sphereGeometry args={[0.13, 16, 16]} />
                     <meshStandardMaterial color={C.handle} />
+                    {/* bigger hit area; reaches in front of the load's move box so the dot wins the click */}
+                    <mesh>
+                      <sphereGeometry args={[0.4]} />
+                      <Invisible />
+                    </mesh>
                   </mesh>
                 );
               })}
