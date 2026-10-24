@@ -6,11 +6,9 @@ Turns a textbook beam problem into an interactive 3D model with the worked solut
 
 You need Node.js and Git (both already installed).
 
-1. Open a terminal in this folder.
-2. First time only: `npm install`
-3. Start the app: `npm run dev`. The app opens in your browser at http://localhost:5173.
+**Windows:** double-click `StrucBox.bat` in this folder. The first start installs everything (a minute or two); the app then opens in your browser at http://localhost:5173. Close the black window to stop it.
 
-To stop it, press `Ctrl+C` in the terminal.
+**Any system, from a terminal:** go to this folder first (`cd "D:\School stuff\StrucBox\github\StrucBox"` on this PC), then run `npm install` once and `npm run dev`. Press `Ctrl+C` to stop.
 
 ## Optional: AI reading and explanations
 
