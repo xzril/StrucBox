@@ -31,5 +31,13 @@ Simply supported, pin at O (x=0), roller at x=4 m, 600 N down at x=1 m. M_O = 60
 ## Later (not now)
 Indeterminate beams, more supports, trusses/frames/arches/cables, sandbox free-tier limits (D5, D22), accounts, teacher mode, mobile (Capacitor), freemium + school licences (D11).
 
+## Code map
+- `src/solver/` pure math (`solve.ts`: reactions, exact piecewise V/M, double-integration deflection). Tests next to it.
+- `src/lib/report.ts` worked steps (TeX), result lines, template explanation. `format.ts` sign convention.
+- `src/input/` OCR (Tesseract, served offline from node_modules), local text parser, AI JSON mapping.
+- `src/components/` screens: Input → ConfirmForm → ModelScreen (BeamView3D, Diagram).
+- `server/ai.ts` Vite middleware for `/api/parse` and `/api/explain` (key from `.env`).
+- Check: `npm test`, `npm run typecheck`.
+
 ## Owner
 Xzril, non-developer. Keep run instructions to `npm install` then `npm run dev`. Node.js and Git are installed on their Windows PC.

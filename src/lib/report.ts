@@ -157,7 +157,7 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
       title: `Moments about ${R.label}`,
       tex: [
         `${mDirTex}\\ \\sum M_{${R.label}} = 0:\\quad ${joinTerms([{ sign: 1, tex: `M_{${R.label}}` }, ...loadTerms(R.x)])} = 0`,
-        `M_{${R.label}} = ${q(showMoment(R.M!, c), FL)}\\ (${rotWord(R.M!) || 'zero'})`,
+        `M_{${R.label}} = ${q(showMoment(R.M!, c), FL)}\\ (\\text{${rotWord(R.M!) || 'zero'}})`,
       ],
     });
   }
@@ -200,7 +200,7 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
         single
           ? `The ${fmt((p.loads[0] as { P: number }).P)} ${F} load acts ${fmt(Math.abs((p.loads[0] as { x: number }).x - x))} ${u.length} from ${label}, so`
           : `Summing each load's force times arm gives`
-      } M${label} = ${fmt(Math.abs(M))} ${FL}${rotWord(M) ? ' ' + rotWord(M) : ''}. A longer arm gives a proportionally larger turning effect for the same force.`,
+      } the moment about ${label} is ${fmt(Math.abs(M))} ${FL}${rotWord(M) ? ' ' + rotWord(M) : ''}. A longer arm gives a proportionally larger turning effect for the same force.`,
     );
   }
 
@@ -208,8 +208,8 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
   const eqTex = s.segments.map((seg) => {
     const V = toGlobal(seg.V, seg.a).map((k) => showInternal(k, c));
     const M = toGlobal(seg.M, seg.a).map((k) => showInternal(k, c));
-    return `${fmt(seg.a)} < x < ${fmt(seg.b)}:\\quad V = ${texPoly(V)},\\quad M = ${texPoly(M)}`;
-  });
+    return [`${fmt(seg.a)} < x < ${fmt(seg.b)}:\\quad V = ${texPoly(V)}`, `\\phantom{${fmt(seg.a)} < x < ${fmt(seg.b)}:}\\quad M = ${texPoly(M)}`];
+  }).flat();
   if (p.asked.shear || p.asked.moment || p.asked.maxValues)
     steps.push({ title: 'Shear and moment equations (method of sections)', text: `x in ${u.length}, V in ${F}, M in ${FL}.`, tex: eqTex });
 

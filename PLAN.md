@@ -18,17 +18,15 @@ Run: `npm install`, then `npm run dev` (opens the browser). AI needs `ANTHROPIC_
 ```
 src/
   solver/        pure math, no UI
-    types.ts       Beam, Support, Load, Units, SignConvention
+    types.ts       Problem, Support, Load, Units
     loads.ts       resultants and centroids (point, UDL, linear)
-    reactions.ts   equilibrium for pin+roller and fixed (cantilever)
-    internal.ts    V(x), M(x) as exact piecewise polynomials
-    deflection.ts  double integration + boundary conditions, /EI or numeric
-    steps.ts       worked solution steps with substituted values
+    poly.ts        polynomial helpers
+    solve.ts       reactions (pin+roller, cantilever), exact piecewise V(x)/M(x), deflection by double integration
     validate.ts    supported vs "Coming soon!" (determinacy, types)
     *.test.ts
+  lib/           units, formatting, sign convention, report.ts (worked steps with substituted values)
   input/         photo upload, OCR, text parsing, AI parse call
   components/    ConfirmForm, BeamView3D, Diagrams (SFD/BMD/deflection), ResultsPanel, Settings
-  lib/           units, formatting, storage
 server/          AI handler (parse problem → JSON, explain results)
 ```
 
