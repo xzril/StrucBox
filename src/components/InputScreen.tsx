@@ -64,7 +64,8 @@ export function InputScreen({ hasLast, defaultSystem, onLast, onParsed }: Props)
       onParsed(r);
     } catch (e: any) {
       setError(`Could not read the problem with AI (${e?.message ?? e}). Reading it offline instead.`);
-      const r = localParse(text);
+      const offline = ocrText || (file ? (await runOcr(file).catch(() => '')).trim() : '');
+      const r = localParse([wordText, offline].filter(Boolean).join('\n\n'));
       if (r.ok) r.problem.answerKey = answerKey || undefined;
       setTimeout(() => onParsed(r), 1200);
     } finally {
@@ -83,7 +84,7 @@ export function InputScreen({ hasLast, defaultSystem, onLast, onParsed }: Props)
     onParsed({ ok: true, problem: p });
   };
 
-  const hasText = !!(ocrText.trim() || wordText.trim());
+  const hasText = !!(ocrText.trim() || wordText.trim() || (ai && file));
 
   return (
     <div className="input-screen">
@@ -135,7 +136,7 @@ export function InputScreen({ hasLast, defaultSystem, onLast, onParsed }: Props)
         </label>
         {error && <p className="error">{error}</p>}
         <div className="actions">
-          <button className="primary" disabled={!hasText || busy || ocrProgress !== null} onClick={read}>
+          <button className="primary" disabled={!hasText || busy || (!ai && ocrProgress !== null)} onClick={read}>
             {busy ? 'Reading…' : 'Read problem'}
           </button>
           <span className="muted small">{ai ? 'AI reading is on.' : 'Offline reading (add an API key for AI reading).'}</span>
