@@ -181,7 +181,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit }: Props) {
                 {ai?.loading ? 'Writing…' : p.answerKey ? 'Explain with AI and check the answer key' : 'Explain with AI'}
               </button>
             ) : (
-              <p className="muted small">Add an API key (see README) for an AI explanation written for this problem.</p>
+              <p className="muted small">For an AI explanation of this problem, run SetApiKey.bat, then restart StrucBox.</p>
             )}
             {p.answerKey && <p className="muted small">Answer key: {p.answerKey}</p>}
           </>

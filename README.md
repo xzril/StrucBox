@@ -15,10 +15,10 @@ You need Node.js and Git (both already installed).
 Without a key, the app still solves everything. It reads photos offline and writes template explanations. With a key, AI reads photos and diagrams better and writes an explanation for each problem.
 
 1. Get an API key at https://console.anthropic.com. Each use is paid.
-2. Copy `.env.example` to a new file named `.env`.
-3. Paste the key after `ANTHROPIC_API_KEY=`, then restart `npm run dev`.
+2. Double-click `SetApiKey.bat`, paste the key, press Enter. (Other systems: copy `.env.example` to `.env` and put the key after `ANTHROPIC_API_KEY=`.)
+3. Close the StrucBox window and start `StrucBox.bat` again.
 
-The key stays on your computer and is never sent to the page.
+The key is saved in `.env` on your computer only. `.env` is never uploaded to GitHub, and the key is never sent to the page.
 
 ## Using it
 

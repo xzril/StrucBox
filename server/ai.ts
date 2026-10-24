@@ -160,7 +160,7 @@ export function aiPlugin(apiKey: string | undefined): Plugin {
     if (!url.startsWith('/api/')) return next();
     try {
       if (url === '/api/status') return send(res, 200, { ai: !!client });
-      if (!client) return send(res, 503, { error: 'No ANTHROPIC_API_KEY set in .env' });
+      if (!client) return send(res, 503, { error: 'No API key set. Run SetApiKey.bat, then restart StrucBox.' });
       const body = await readBody(req);
 
       if (url === '/api/parse') {
@@ -186,7 +186,10 @@ export function aiPlugin(apiKey: string | undefined): Plugin {
       }
       return send(res, 404, { error: 'Unknown endpoint' });
     } catch (e: any) {
-      return send(res, 500, { error: e?.message ?? String(e) });
+      if (e instanceof Anthropic.AuthenticationError)
+        return send(res, 401, { error: 'Your API key was rejected. Run SetApiKey.bat again with a valid key, then restart StrucBox.' });
+      if (e instanceof Anthropic.APIConnectionError) return send(res, 502, { error: 'No internet connection to the AI service.' });
+      return send(res, 500, { error: e?.error?.error?.message ?? e?.message ?? String(e) });
     }
   };
 
