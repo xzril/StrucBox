@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { postJson } from '../input/api';
+import { useEffect, useMemo, useState } from 'react';
+import { aiAvailable, postJson } from '../input/api';
 import { conventionText } from '../lib/format';
 import { buildReport, sampleDiagram, type ResultLine } from '../lib/report';
 import { eiInProblemUnits, toDeflectionUnit, unitStr } from '../lib/units';
@@ -22,6 +22,10 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit }: Props) {
   const [showUnasked, setShowUnasked] = useState(false);
   const [bend, setBend] = useState(true);
   const [ai, setAi] = useState<{ key: string; text?: string; error?: string; loading?: boolean } | null>(null);
+  const [hasAi, setHasAi] = useState(false);
+  useEffect(() => {
+    aiAvailable().then(setHasAi);
+  }, []);
 
   const outcome = useMemo(() => solve(p), [p]);
   const report = useMemo(() => (outcome.ok ? buildReport(p, outcome.solution, settings) : null), [p, outcome, settings]);
@@ -172,9 +176,13 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit }: Props) {
             )}
             {ai?.text && ai.key !== aiKey && <p className="muted small">The AI explanation was for the earlier load positions.</p>}
             {ai?.error && <p className="error small">{ai.error}</p>}
-            <button className="small" disabled={ai?.loading} onClick={explainWithAi}>
-              {ai?.loading ? 'Writing…' : p.answerKey ? 'Explain with AI and check the answer key' : 'Explain with AI'}
-            </button>
+            {hasAi ? (
+              <button className="small" disabled={ai?.loading} onClick={explainWithAi}>
+                {ai?.loading ? 'Writing…' : p.answerKey ? 'Explain with AI and check the answer key' : 'Explain with AI'}
+              </button>
+            ) : (
+              <p className="muted small">Add an API key (see README) for an AI explanation written for this problem.</p>
+            )}
             {p.answerKey && <p className="muted small">Answer key: {p.answerKey}</p>}
           </>
         )}
