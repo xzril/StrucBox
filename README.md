@@ -10,12 +10,16 @@ You need Node.js and Git (both already installed).
 
 **Any system, from a terminal:** go to this folder first (`cd "D:\School stuff\StrucBox\github\StrucBox"` on this PC), then run `npm install` once and `npm run dev`. Press `Ctrl+C` to stop.
 
-## Optional: AI reading and explanations
+## Free and Premium
 
-Without a key, the app still solves everything. It reads photos offline and writes template explanations. With a key, AI reads photos and diagrams better and writes an explanation for each problem.
+**Free (no key):** the full offline app. It solves every problem, reads photos with offline OCR, and writes template explanations.
 
-1. Get an API key at https://console.anthropic.com. Each use is paid.
-2. Double-click `SetApiKey.bat`, paste the key, press Enter. (Other systems: copy `.env.example` to `.env` and put the key after `ANTHROPIC_API_KEY=`.)
+**Premium (with an AI key):** adds AI tools. AI reads photos and drawings (much better on blurry or pixelated photos), writes an explanation for each problem and checks your answer key, and answers questions in an "Ask the tutor" box. The solver still computes every number. The top bar shows which plan is on.
+
+1. Get a key from either service. Each use is paid or rate-limited by the provider.
+   - Claude: https://console.anthropic.com
+   - Gemini: https://aistudio.google.com/apikey
+2. Double-click `SetApiKey.bat`, press 1 (Claude) or 2 (Gemini), paste the key, and press Enter. Running it again for the other service keeps both keys and switches to the one you just chose. (Other systems: copy `.env.example` to `.env` and fill it in.)
 3. Close the StrucBox window and start `StrucBox.bat` again.
 
 The key is saved in `.env` on your computer only. `.env` is never uploaded to GitHub, and the key is never sent to the page.
@@ -38,4 +42,4 @@ The sign convention and default units are under ⚙ Settings.
 - `src/lib/`: units, formatting, sign convention, and the worked steps.
 - `src/input/`: OCR and problem reading.
 - `src/components/`: the screens, the 3D view, and the diagrams.
-- `server/ai.ts`: the AI handler, which runs inside the dev server.
+- `server/ai.ts`: the AI handler (Claude or Gemini), which runs inside the dev server.

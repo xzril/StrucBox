@@ -1,31 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
-import { aiAvailable, postJson } from '../input/api';
+import { postJson } from '../input/api';
 import { fileToBase64, runOcr } from '../input/ocr';
 import { blankProblem, fromAi, localParse, workedExample, type ParseResult } from '../input/parse';
 import { defaultUnits } from '../lib/units';
 
 interface Props {
+  premium: boolean;
   hasLast: boolean;
   defaultSystem: 'SI' | 'US';
   onLast: () => void;
   onParsed: (r: ParseResult) => void;
 }
 
-export function InputScreen({ hasLast, defaultSystem, onLast, onParsed }: Props) {
+export function InputScreen({ premium: ai, hasLast, defaultSystem, onLast, onParsed }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [ocrText, setOcrText] = useState('');
   const [ocrProgress, setOcrProgress] = useState<number | null>(null);
   const [wordText, setWordText] = useState('');
   const [answerKey, setAnswerKey] = useState('');
-  const [ai, setAi] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    aiAvailable().then(setAi);
-  }, []);
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
@@ -139,7 +135,9 @@ export function InputScreen({ hasLast, defaultSystem, onLast, onParsed }: Props)
           <button className="primary" disabled={!hasText || busy || (!ai && ocrProgress !== null)} onClick={read}>
             {busy ? 'Reading…' : 'Read problem'}
           </button>
-          <span className="muted small">{ai ? 'AI reading is on.' : 'Offline reading (add an API key for AI reading).'}</span>
+          <span className="muted small">{ai
+              ? 'Premium: AI reads the photo and the text.'
+              : 'Free: offline text reading. Premium AI reading understands blurry photos and drawings (run SetApiKey.bat).'}</span>
         </div>
       </section>
 

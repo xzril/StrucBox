@@ -135,50 +135,118 @@ function send(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-async function ask(client: Anthropic, params: { system: string; content: any[]; effort: 'low' | 'medium'; schema?: object; maxTokens: number }) {
-  const response = await client.beta.messages.create({
-    model: MODEL,
-    max_tokens: params.maxTokens,
-    system: params.system,
-    messages: [{ role: 'user', content: params.content }],
-    output_config: { effort: params.effort, ...(params.schema ? { format: { type: 'json_schema', schema: params.schema } } : {}) },
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-  } as any);
-  if (response.stop_reason === 'refusal') throw new Error('The AI declined this request.');
-  return response.content
-    .filter((b: any) => b.type === 'text')
-    .map((b: any) => b.text)
-    .join('');
+export type Provider = 'anthropic' | 'gemini';
+interface Ask {
+  system: string;
+  text: string;
+  image?: { data: string; mediaType: string };
+  schema?: object;
+  effort: 'low' | 'medium';
+  maxTokens: number;
 }
 
-export function aiPlugin(apiKey: string | undefined): Plugin {
-  const client = apiKey ? new Anthropic({ apiKey }) : null;
+class KeyRejected extends Error {}
+
+async function askClaude(client: Anthropic, q: Ask): Promise<string> {
+  const content: any[] = [];
+  if (q.image) content.push({ type: 'image', source: { type: 'base64', media_type: q.image.mediaType, data: q.image.data } });
+  content.push({ type: 'text', text: q.text });
+  try {
+    const response = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: q.maxTokens,
+      system: q.system,
+      messages: [{ role: 'user', content }],
+      output_config: { effort: q.effort, ...(q.schema ? { format: { type: 'json_schema', schema: q.schema } } : {}) },
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+    } as any);
+    if (response.stop_reason === 'refusal') throw new Error('The AI declined this request.');
+    return response.content
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text)
+      .join('');
+  } catch (e) {
+    if (e instanceof Anthropic.AuthenticationError) throw new KeyRejected();
+    if (e instanceof Anthropic.APIConnectionError) throw new Error('No internet connection to the AI service.');
+    throw e;
+  }
+}
+
+// Gemini through its REST API: a few lines of fetch, so no extra SDK.
+async function askGemini(key: string, model: string, q: Ask): Promise<string> {
+  const parts: any[] = [];
+  if (q.image) parts.push({ inlineData: { mimeType: q.image.mediaType, data: q.image.data } });
+  // shortcut: the schema goes in the prompt with JSON mode on; switch to responseJsonSchema once its support is confirmed for the chosen model
+  parts.push({ text: q.schema ? `${q.text}\n\nReply with JSON only, matching this JSON Schema:\n${JSON.stringify(q.schema)}` : q.text });
+  let r: Response;
+  try {
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: q.system }] },
+        contents: [{ role: 'user', parts }],
+        generationConfig: { maxOutputTokens: q.maxTokens, ...(q.schema ? { responseMimeType: 'application/json' } : {}) },
+      }),
+    });
+  } catch {
+    throw new Error('No internet connection to the AI service.');
+  }
+  const json: any = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg: string = json?.error?.message ?? `Gemini error ${r.status}`;
+    if (r.status === 401 || r.status === 403 || /api key/i.test(msg)) throw new KeyRejected();
+    throw new Error(msg);
+  }
+  const text = (json.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? '').join('');
+  if (!text) throw new Error('The AI returned no answer.');
+  return text;
+}
+
+/** Picks the provider from .env: AI_PROVIDER if its key is set, otherwise whichever key exists. */
+export function pickProvider(env: Record<string, string | undefined>): Provider | null {
+  const has = { anthropic: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY };
+  const wanted = env.AI_PROVIDER as Provider | undefined;
+  if (wanted && has[wanted]) return wanted;
+  return has.anthropic ? 'anthropic' : has.gemini ? 'gemini' : null;
+}
+
+const TUTOR_SYSTEM = `You are the tutor panel of a statics teaching app for engineering students.
+Answer the student's question about the given beam problem: textbook-formal, direct, at most 120 words, plain text.
+All numbers come from the app's solver and are correct. Never compute or state new numerical results; refer only to the given numbers and to the solution steps by name.
+If the question needs a number that is not given, say which step or diagram of the solution shows it.`;
+
+export function aiPlugin(env: Record<string, string | undefined>): Plugin {
+  const provider = pickProvider(env);
+  const client = provider === 'anthropic' ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) : null;
+  const ask = (q: Ask) =>
+    provider === 'anthropic' ? askClaude(client!, q) : askGemini(env.GEMINI_API_KEY!, env.GEMINI_MODEL || 'gemini-2.5-flash', q);
 
   const handler = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const url = req.url ?? '';
     if (!url.startsWith('/api/')) return next();
     try {
-      if (url === '/api/status') return send(res, 200, { ai: !!client });
-      if (!client) return send(res, 503, { error: 'No API key set. Run SetApiKey.bat, then restart StrucBox.' });
+      if (url === '/api/status') return send(res, 200, { ai: !!provider, provider });
+      if (!provider) return send(res, 503, { error: 'Premium AI tools need an API key. Run SetApiKey.bat, then restart StrucBox.' });
       const body = await readBody(req);
 
       if (url === '/api/parse') {
-        const content: any[] = [];
-        if (body.image?.data)
-          content.push({ type: 'image', source: { type: 'base64', media_type: body.image.mediaType, data: body.image.data } });
-        content.push({
-          type: 'text',
+        const text = await ask({
+          system: PARSE_SYSTEM,
           text: `OCR text from the photo:\n${body.ocrText || '(none)'}\n\nWord problem typed by the student:\n${body.wordText || '(none)'}`,
+          image: body.image?.data ? body.image : undefined,
+          schema: PROBLEM_SCHEMA,
+          effort: 'medium',
+          maxTokens: 16000,
         });
-        const text = await ask(client, { system: PARSE_SYSTEM, content, effort: 'medium', schema: PROBLEM_SCHEMA, maxTokens: 16000 });
-        return send(res, 200, JSON.parse(text));
+        return send(res, 200, JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')));
       }
 
-      if (url === '/api/explain') {
-        const text = await ask(client, {
-          system: EXPLAIN_SYSTEM,
-          content: [{ type: 'text', text: JSON.stringify(body) }],
+      if (url === '/api/explain' || url === '/api/ask') {
+        const text = await ask({
+          system: url === '/api/ask' ? TUTOR_SYSTEM : EXPLAIN_SYSTEM,
+          text: JSON.stringify(body),
           effort: 'low',
           maxTokens: 4000,
         });
@@ -186,13 +254,11 @@ export function aiPlugin(apiKey: string | undefined): Plugin {
       }
       return send(res, 404, { error: 'Unknown endpoint' });
     } catch (e: any) {
-      if (e instanceof Anthropic.AuthenticationError)
+      if (e instanceof KeyRejected)
         return send(res, 401, { error: 'Your API key was rejected. Run SetApiKey.bat again with a valid key, then restart StrucBox.' });
-      if (e instanceof Anthropic.APIConnectionError) return send(res, 502, { error: 'No internet connection to the AI service.' });
       return send(res, 500, { error: e?.error?.error?.message ?? e?.message ?? String(e) });
     }
   };
-
   return {
     name: 'strucbox-ai',
     configureServer(server) {

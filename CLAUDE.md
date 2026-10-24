@@ -14,6 +14,9 @@ App for engineering students (priority) and teachers that turns a textbook struc
 3. 3D beam render. 2D problems keep forces in the beam's plane (D9).
 4. Results, formulas with substituted values, short explanation.
 
+## Plans
+- Free = offline app (solver, offline OCR, template text). Premium = an AI key in `.env` unlocks AI tools: AI photo reading, AI explanation + answer-key check, ask-the-tutor. No payment system yet.
+
 ## Hard rules
 - **The built-in solver computes every number** (reactions, V, M, deflection, moments about points). AI only reads the problem and writes explanations (D24). Never let AI produce answers.
 - AI explanations: textbook-formal, direct, brief (D28). Need internet; app must still work offline without them (D17), using template text.
@@ -36,7 +39,8 @@ Indeterminate beams, more supports, trusses/frames/arches/cables, sandbox free-t
 - `src/lib/report.ts` worked steps (TeX), result lines, template explanation. `format.ts` sign convention.
 - `src/input/` OCR (Tesseract, served offline from node_modules), local text parser, AI JSON mapping.
 - `src/components/` screens: Input → ConfirmForm → ModelScreen (BeamView3D, Diagram).
-- `server/ai.ts` Vite middleware for `/api/parse` and `/api/explain` (key from `.env`).
+- `server/ai.ts` Vite middleware for `/api/status`, `/api/parse`, `/api/explain`, `/api/ask`; Claude or Gemini (`AI_PROVIDER`, keys from `.env`).
+- `src/lib/theme.ts` two-tone palette (navy structure/reactions, amber loads), light/dark.
 - Check: `npm test`, `npm run typecheck`.
 
 ## Owner

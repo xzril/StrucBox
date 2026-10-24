@@ -5,7 +5,7 @@ import { aiPlugin } from './server/ai';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
-    plugins: [react(), aiPlugin(env.ANTHROPIC_API_KEY || undefined)],
+    plugins: [react(), aiPlugin(env)],
     server: { port: 5173 },
   };
 });

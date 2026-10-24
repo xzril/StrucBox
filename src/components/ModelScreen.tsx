@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { aiAvailable, postJson } from '../input/api';
+import { useMemo, useState } from 'react';
+import { postJson, providerName, type Plan } from '../input/api';
 import { conventionText } from '../lib/format';
 import type { Palette } from '../lib/theme';
 import { buildReport, sampleDiagram, type ResultLine } from '../lib/report';
@@ -17,17 +17,16 @@ interface Props {
   onChange: (p: Problem) => void;
   onEdit: () => void;
   C: Palette;
+  plan: Plan;
 }
 
-export function ModelScreen({ problem: p, settings, onChange, onEdit, C }: Props) {
+export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }: Props) {
   const [showSolution, setShowSolution] = useState(false);
   const [showUnasked, setShowUnasked] = useState(false);
   const [bend, setBend] = useState(true);
   const [ai, setAi] = useState<{ key: string; text?: string; error?: string; loading?: boolean } | null>(null);
-  const [hasAi, setHasAi] = useState(false);
-  useEffect(() => {
-    aiAvailable().then(setHasAi);
-  }, []);
+  const [question, setQuestion] = useState('');
+  const [tutor, setTutor] = useState<{ q: string; text?: string; error?: string; loading?: boolean } | null>(null);
 
   const outcome = useMemo(() => solve(p), [p]);
   const report = useMemo(() => (outcome.ok ? buildReport(p, outcome.solution, settings) : null), [p, outcome, settings]);
@@ -61,18 +60,35 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C }: Props
   const deflPoints = sampleDiagram(s, 'EIy', settings).map(([x, y]) => [x, ei ? toDeflectionUnit(y / ei, u) : y] as [number, number]);
 
   const aiKey = JSON.stringify([p.length, p.supports, p.loads, p.asked, p.stiffness, settings]);
+  const context = {
+    problem: { title: p.title, text: p.text, units: u, length: p.length, supports: p.supports, loads: p.loads, asked: p.asked },
+    signConvention: conventionText(settings),
+    results: report.lines.map((l) => ({ quantity: l.label, value: l.value, note: l.note })),
+    solutionSteps: report.steps.map((st) => st.title),
+  };
   const explainWithAi = async () => {
     setAi({ key: aiKey, loading: true });
     try {
       const { text } = await postJson<{ text: string }>('/api/explain', {
-        problem: { title: p.title, text: p.text, units: u, length: p.length, supports: p.supports, loads: p.loads, asked: p.asked },
-        signConvention: conventionText(settings),
-        results: report.lines.filter((l) => groupAsked[l.group]).map((l) => ({ quantity: l.label, value: l.value, note: l.note })),
+        ...context,
+        results: context.results.filter((_, i) => groupAsked[report.lines[i].group]),
         answerKey: p.answerKey,
       });
       setAi({ key: aiKey, text });
     } catch (e: any) {
       setAi({ key: aiKey, error: e?.message ?? String(e) });
+    }
+  };
+
+  const askTutor = async () => {
+    const q = question.trim();
+    if (!q) return;
+    setTutor({ q, loading: true });
+    try {
+      const { text } = await postJson<{ text: string }>('/api/ask', { question: q, ...context });
+      setTutor({ q, text });
+    } catch (e: any) {
+      setTutor({ q, error: e?.message ?? String(e) });
     }
   };
 
@@ -178,16 +194,47 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C }: Props
             )}
             {ai?.text && ai.key !== aiKey && <p className="muted small">The AI explanation was for the earlier load positions.</p>}
             {ai?.error && <p className="error small">{ai.error}</p>}
-            {hasAi ? (
-              <button className="small" disabled={ai?.loading} onClick={explainWithAi}>
-                {ai?.loading ? 'Writing…' : p.answerKey ? 'Explain with AI and check the answer key' : 'Explain with AI'}
-              </button>
-            ) : (
-              <p className="muted small">For an AI explanation of this problem, run SetApiKey.bat, then restart StrucBox.</p>
-            )}
             {p.answerKey && <p className="muted small">Answer key: {p.answerKey}</p>}
           </>
         )}
+
+        <section className="tools">
+          <h3>AI tools {plan.premium ? `· ${providerName(plan.provider)}` : '· Premium'}</h3>
+          {plan.premium ? (
+            <>
+              <button className="small" disabled={ai?.loading} onClick={() => (setShowSolution(true), explainWithAi())}>
+                {ai?.loading ? 'Writing…' : p.answerKey ? 'Explain with AI and check the answer key' : 'Explain with AI'}
+              </button>
+              <label className="field">
+                <span>Ask the tutor about this problem</span>
+                <textarea
+                  rows={2}
+                  value={question}
+                  placeholder="e.g. Why is the moment about O clockwise?"
+                  onChange={(e) => setQuestion(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), askTutor())}
+                />
+              </label>
+              <button className="small" disabled={!question.trim() || tutor?.loading} onClick={askTutor}>
+                {tutor?.loading ? 'Thinking…' : 'Ask'}
+              </button>
+              {tutor?.text && (
+                <p className="explain">
+                  <strong>{tutor.q}</strong>
+                  <br />
+                  {tutor.text}
+                </p>
+              )}
+              {tutor?.error && <p className="error small">{tutor.error}</p>}
+              <p className="muted small">The AI explains; every number still comes from StrucBox's solver.</p>
+            </>
+          ) : (
+            <p className="locked">
+              🔒 AI reading of photos, AI explanations with answer-key checks, and an ask-the-tutor box come with Premium. Run SetApiKey.bat
+              with a Claude or Gemini key, then restart StrucBox.
+            </p>
+          )}
+        </section>
       </aside>
     </div>
   );

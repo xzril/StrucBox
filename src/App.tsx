@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ComingSoon } from './components/ComingSoon';
 import { ConfirmForm } from './components/ConfirmForm';
 import { InputScreen } from './components/InputScreen';
 import { ModelScreen } from './components/ModelScreen';
 import { SettingsDialog, type Settings, defaultSettings } from './components/SettingsDialog';
+import { aiStatus, providerName, type Plan } from './input/api';
 import { load, save } from './lib/storage';
 import { usePalette } from './lib/theme';
 import type { Problem } from './solver/types';
@@ -15,6 +16,10 @@ export default function App() {
   const [problem, setProblem] = useState<Problem | null>(() => load<{ p: Problem | null }>('last', { p: null }).p);
   const [settings, setSettings] = useState<Settings>(() => load('settings', defaultSettings));
   const [showSettings, setShowSettings] = useState(false);
+  const [plan, setPlan] = useState<Plan>({ premium: false, provider: null });
+  useEffect(() => {
+    aiStatus().then(setPlan);
+  }, []);
   const C = usePalette(settings.theme);
   const dark = C.dark;
 
@@ -38,6 +43,12 @@ export default function App() {
           <span className={stage.name === 'confirm' ? 'on' : ''}>2 Confirm values</span>
           <span className={stage.name === 'model' ? 'on' : ''}>3 Model</span>
         </nav>
+        <span
+          className={`plan ${plan.premium ? 'premium' : ''}`}
+          title={plan.premium ? 'AI tools are on (API key found).' : 'Offline version. Run SetApiKey.bat to unlock the AI tools.'}
+        >
+          {plan.premium ? `PREMIUM · AI (${providerName(plan.provider)})` : 'FREE · offline'}
+        </span>
         <button
           className="ghost theme-toggle"
           title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -54,6 +65,7 @@ export default function App() {
       <main>
         {stage.name === 'input' && (
           <InputScreen
+            premium={plan.premium}
             hasLast={!!problem}
             defaultSystem={settings.defaultSystem}
             onLast={() => setStage({ name: 'confirm' })}
@@ -75,7 +87,7 @@ export default function App() {
           />
         )}
         {stage.name === 'model' && problem && (
-          <ModelScreen problem={problem} onChange={updateProblem} settings={settings} onEdit={() => setStage({ name: 'confirm' })} C={C} />
+          <ModelScreen problem={problem} onChange={updateProblem} settings={settings} onEdit={() => setStage({ name: 'confirm' })} C={C} plan={plan} />
         )}
         {stage.name === 'soon' && <ComingSoon reason={stage.reason} onBack={() => setStage({ name: 'input' })} />}
       </main>

@@ -1,9 +1,18 @@
-export async function aiAvailable(): Promise<boolean> {
+export type Provider = 'anthropic' | 'gemini';
+/** Premium = an API key is set in .env; free = offline only. */
+export interface Plan {
+  premium: boolean;
+  provider: Provider | null;
+}
+export const providerName = (p: Provider | null) => (p === 'gemini' ? 'Gemini' : 'Claude');
+
+export async function aiStatus(): Promise<Plan> {
   try {
     const r = await fetch('/api/status');
-    return r.ok && (await r.json()).ai === true;
+    const j = r.ok ? await r.json() : {};
+    return { premium: j.ai === true, provider: j.provider ?? null };
   } catch {
-    return false;
+    return { premium: false, provider: null };
   }
 }
 
