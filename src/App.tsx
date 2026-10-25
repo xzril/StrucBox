@@ -1,48 +1,114 @@
 import { useEffect, useState } from 'react';
 import { ComingSoon } from './components/ComingSoon';
 import { ConfirmForm } from './components/ConfirmForm';
+import { FolderPicker } from './components/FolderPicker';
+import { HomeScreen } from './components/HomeScreen';
 import { InputScreen } from './components/InputScreen';
 import { ModelScreen } from './components/ModelScreen';
 import { SettingsDialog, type Settings, defaultSettings } from './components/SettingsDialog';
 import { aiStatus, providerName, WEB_BUILD, type Plan } from './input/api';
+import { blankProblem, newId } from './input/parse';
+import { addEntry, emptyLibrary, findEntry, mapEntry, removeEntry, thumbnail, type Library } from './lib/library';
 import { load, save } from './lib/storage';
 import { usePalette } from './lib/theme';
+import { defaultUnits } from './lib/units';
 import type { Problem } from './solver/types';
 
-type Stage = { name: 'input' } | { name: 'confirm' } | { name: 'model' } | { name: 'soon'; reason: string };
+type Stage = { name: 'home' } | { name: 'input'; file?: File } | { name: 'confirm' } | { name: 'model' } | { name: 'soon'; reason: string };
+/** The problem on screen: a saved entry (id) or a new one not yet put in a folder (id null). */
+type Current = { id: string | null; problem: Problem; file?: File };
 
 export default function App() {
-  const [stage, setStage] = useState<Stage>({ name: 'input' });
-  const [problem, setProblem] = useState<Problem | null>(() => load<{ p: Problem | null }>('last', { p: null }).p);
+  const [stage, setStage] = useState<Stage>({ name: 'home' });
+  const [lib, setLib] = useState<Library>(() => load('library', emptyLibrary));
+  const [current, setCurrent] = useState<Current | null>(null);
+  const [picker, setPicker] = useState<{ moveId?: string } | null>(null);
   const [settings, setSettings] = useState<Settings>(() => load('settings', defaultSettings));
   const [showSettings, setShowSettings] = useState(false);
   const [plan, setPlan] = useState<Plan>({ premium: false, provider: null });
   useEffect(() => {
     aiStatus().then(setPlan);
   }, []);
+  useEffect(() => {
+    scrollTo(0, 0);
+  }, [stage.name]);
   const C = usePalette(settings.theme);
   const dark = C.dark;
 
-  const updateProblem = (p: Problem) => {
-    setProblem(p);
-    save('last', { p });
+  // shortcut: localStorage holds ~5 MB (about 500 problems with thumbnails); move to IndexedDB if users hit it
+  const updateLib = (l: Library) => {
+    setLib(l);
+    save('library', l);
   };
   const updateSettings = (s: Settings) => {
     setSettings(s);
     save('settings', s);
   };
+  const now = () => new Date().toISOString();
+
+  const start = (problem: Problem, file?: File) => {
+    setCurrent({ id: null, problem, file });
+    setStage({ name: 'confirm' });
+  };
+  const manual = () => {
+    const p = blankProblem();
+    p.units = defaultUnits(settings.defaultSystem);
+    if (settings.defaultSystem === 'US') {
+      p.length = 20;
+      p.supports[1].x = 20;
+      p.loads = [{ ...p.loads[0], x: 10 } as typeof p.loads[0]];
+    }
+    start(p);
+  };
+  const open = (id: string, name: 'model' | 'confirm') => {
+    const e = findEntry(lib, id);
+    if (!e) return;
+    setCurrent({ id, problem: e.problem });
+    setStage(name === 'model' ? { name: 'model' } : { name: 'confirm' });
+  };
+  // live edits on the model screen are saved straight away
+  const changeModel = (problem: Problem) => {
+    setCurrent({ ...current!, problem });
+    if (current?.id) updateLib(mapEntry(lib, current.id, (e) => ({ ...e, problem, modified: now() })));
+  };
+  const build = () => {
+    if (!current) return;
+    if (!current.id) return setPicker({});
+    updateLib(mapEntry(lib, current.id, (e) => ({ ...e, problem: current.problem, modified: now() })));
+    setStage({ name: 'model' });
+  };
+  const picked = async (l: Library, folderId: string) => {
+    setPicker(null);
+    if (picker?.moveId) {
+      const e = findEntry(l, picker.moveId)!;
+      return updateLib(addEntry(removeEntry(l, e.id), folderId, e));
+    }
+    if (!current) return;
+    const id = newId();
+    const image = current.file && (await thumbnail(current.file));
+    updateLib(addEntry(l, folderId, { id, problem: current.problem, image, created: now(), modified: now() }));
+    setCurrent({ id, problem: current.problem });
+    setStage({ name: 'model' });
+  };
+  const duplicate = (id: string) => {
+    const f = lib.folders.find((f) => f.items.some((e) => e.id === id))!;
+    const e = findEntry(lib, id)!;
+    updateLib(addEntry(lib, f.id, { ...e, id: newId(), problem: { ...e.problem, title: `${e.problem.title} (copy)` }, created: now(), modified: now() }));
+  };
 
   return (
     <div className="app">
       <header className="topbar">
-        <button className="brand" onClick={() => setStage({ name: 'input' })} title="New problem">
+        <button className="brand" onClick={() => setStage({ name: 'home' })} title="Home">
           <span className="logo">▣</span> StrucBox
         </button>
-        <nav className="steps">
-          <span className={stage.name === 'input' ? 'on' : ''}>1 Problem</span>
-          <span className={stage.name === 'confirm' ? 'on' : ''}>2 Confirm values</span>
-          <span className={stage.name === 'model' ? 'on' : ''}>3 Model</span>
-        </nav>
+        {stage.name !== 'home' && (
+          <nav className="steps">
+            <span className={stage.name === 'input' ? 'on' : ''}>1 Problem</span>
+            <span className={stage.name === 'confirm' ? 'on' : ''}>2 Confirm values</span>
+            <span className={stage.name === 'model' ? 'on' : ''}>3 Model</span>
+          </nav>
+        )}
         <span
           className={`plan ${plan.premium ? 'premium' : ''}`}
           title={plan.premium ? 'AI tools are on (API key found).' : WEB_BUILD ? 'Online test version: free offline app only.' : 'Offline version. Run SetApiKey.bat to unlock the AI tools.'}
@@ -57,41 +123,53 @@ export default function App() {
         >
           {dark ? '☀' : '☾'}
         </button>
-        <button className="ghost" aria-label="Settings" onClick={() => setShowSettings(true)}>
-          ⚙ <span className="hide-sm">Settings</span>
-        </button>
+        {stage.name !== 'home' && (
+          <button className="ghost" aria-label="Settings" onClick={() => setShowSettings(true)}>
+            ⚙ <span className="hide-sm">Settings</span>
+          </button>
+        )}
       </header>
 
-      <main>
+      <main className={stage.name === 'home' ? 'home-main' : ''}>
+        {stage.name === 'home' && (
+          <HomeScreen
+            lib={lib}
+            onLib={updateLib}
+            onOpen={(id) => open(id, 'model')}
+            onEdit={(id) => open(id, 'confirm')}
+            onMove={(id) => setPicker({ moveId: id })}
+            onDuplicate={duplicate}
+            onPhoto={(file) => setStage({ name: 'input', file })}
+            onManual={manual}
+            onSettings={() => setShowSettings(true)}
+          />
+        )}
         {stage.name === 'input' && (
           <InputScreen
             premium={plan.premium}
-            hasLast={!!problem}
-            defaultSystem={settings.defaultSystem}
-            onLast={() => setStage({ name: 'confirm' })}
-            onParsed={(r) => {
-              if (r.ok) {
-                updateProblem(r.problem);
-                setStage({ name: 'confirm' });
-              } else setStage({ name: 'soon', reason: r.reason });
-            }}
+            initialFile={stage.file}
+            onManual={manual}
+            onParsed={(r, file) => (r.ok ? start(r.problem, file) : setStage({ name: 'soon', reason: r.reason }))}
           />
         )}
-        {stage.name === 'confirm' && problem && (
+        {stage.name === 'confirm' && current && (
           <ConfirmForm
-            problem={problem}
-            onChange={updateProblem}
-            onBack={() => setStage({ name: 'input' })}
-            onBuild={() => setStage({ name: 'model' })}
+            problem={current.problem}
+            onChange={(problem) => setCurrent({ ...current, problem })}
+            onBack={() => setStage({ name: 'home' })}
+            onBuild={build}
             onComingSoon={(reason) => setStage({ name: 'soon', reason })}
           />
         )}
-        {stage.name === 'model' && problem && (
-          <ModelScreen problem={problem} onChange={updateProblem} settings={settings} onEdit={() => setStage({ name: 'confirm' })} C={C} plan={plan} />
+        {stage.name === 'model' && current && (
+          <ModelScreen problem={current.problem} onChange={changeModel} settings={settings} onEdit={() => setStage({ name: 'confirm' })} C={C} plan={plan} />
         )}
-        {stage.name === 'soon' && <ComingSoon reason={stage.reason} onBack={() => setStage({ name: 'input' })} />}
+        {stage.name === 'soon' && <ComingSoon reason={stage.reason} onBack={() => setStage({ name: 'home' })} />}
       </main>
 
+      {picker && (
+        <FolderPicker lib={lib} title={picker.moveId ? 'Move to folder' : 'Save to folder'} onDone={picked} onCancel={() => setPicker(null)} />
+      )}
       {showSettings && <SettingsDialog settings={settings} onChange={updateSettings} onClose={() => setShowSettings(false)} />}
     </div>
   );
