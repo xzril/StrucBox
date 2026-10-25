@@ -117,11 +117,14 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
       if (l.kind === 'moment') return { sign: (l.dir === 'ccw' ? 1 : -1) * mSign, tex: fmt(l.M) };
       const { P, x } = l.kind === 'point' ? { P: l.P, x: l.x } : { P: distResultant(l).W, x: distResultant(l).xc };
       const m = -P * (x - about);
-      return { sign: Math.sign(m || 1) * mSign, tex: `${fmt(P)}(${fmt(Math.abs(x - about))})` };
+      return { sign: Math.sign(m || 1) * mSign, tex: `${fmt(Math.abs(P))}(${fmt(Math.abs(x - about))})` };
     });
   const downTerms = p.loads
     .filter((l) => l.kind !== 'moment')
-    .map((l) => ({ sign: -fSign, tex: fmt(l.kind === 'point' ? l.P : l.kind === 'dist' ? distResultant(l).W : 0) }));
+    .map((l) => {
+      const P = l.kind === 'point' ? l.P : l.kind === 'dist' ? distResultant(l).W : 0;
+      return { sign: -fSign * Math.sign(P || 1), tex: fmt(Math.abs(P)) };
+    });
 
   if (s.kind === 'simple') {
     const [r1, r2] = s.reactions;
@@ -132,14 +135,16 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
     steps.push({
       title: `Moments about ${A.label}`,
       tex: [
-        `${mDirTex}\\ \\sum M_{${A.label}} = 0:\\quad ${joinTerms(mTerms)} = 0`,
+        `${mDirTex}\\ \\sum M_{${A.label}} = 0:`,
+        `${joinTerms(mTerms)} = 0`,
         `${B.label}_y = ${q(B.Ry, F)}`,
       ],
     });
     steps.push({
       title: 'Vertical equilibrium',
       tex: [
-        `${fDirTex}\\ \\sum F_y = 0:\\quad ${joinTerms([
+        `${fDirTex}\\ \\sum F_y = 0:`,
+        `${joinTerms([
           { sign: fSign, tex: `${A.label}_y` },
           { sign: fSign, tex: `${B.label}_y` },
           ...downTerms,
@@ -151,12 +156,13 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
     const R = s.reactions[0];
     steps.push({
       title: 'Vertical equilibrium',
-      tex: [`${fDirTex}\\ \\sum F_y = 0:\\quad ${joinTerms([{ sign: fSign, tex: `${R.label}_y` }, ...downTerms])} = 0`, `${R.label}_y = ${q(R.Ry, F)}`],
+      tex: [`${fDirTex}\\ \\sum F_y = 0:`, `${joinTerms([{ sign: fSign, tex: `${R.label}_y` }, ...downTerms])} = 0`, `${R.label}_y = ${q(R.Ry, F)}`],
     });
     steps.push({
       title: `Moments about ${R.label}`,
       tex: [
-        `${mDirTex}\\ \\sum M_{${R.label}} = 0:\\quad ${joinTerms([{ sign: 1, tex: `M_{${R.label}}` }, ...loadTerms(R.x)])} = 0`,
+        `${mDirTex}\\ \\sum M_{${R.label}} = 0:`,
+        `${joinTerms([{ sign: 1, tex: `M_{${R.label}}` }, ...loadTerms(R.x)])} = 0`,
         `M_{${R.label}} = ${q(showMoment(R.M!, c), FL)}\\ (\\text{${rotWord(R.M!) || 'zero'}})`,
       ],
     });
@@ -191,9 +197,13 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
     const M = momentAboutPoint(p, x);
     const single = p.loads.length === 1 && p.loads[0].kind === 'point';
     const tex = single
-      ? `M_{${label}} = F \\times d = ${q((p.loads[0] as { P: number }).P, F)} \\times ${q(Math.abs((p.loads[0] as { x: number }).x - x), u.length)} = ${q(Math.abs(M), FL)}\\ (\\text{${rotWord(M) || 'zero'}})`
-      : `${mDirTex}\\ M_{${label}} = \\sum F d = ${joinTerms(loadTerms(x))} = ${q(showMoment(M, c), FL)}`;
-    steps.push({ title: `Moment about ${label}`, text: 'Moment of the applied loads about the point (force × perpendicular distance).', tex: [tex] });
+      ? [
+          `M_{${label}} = F \\times d:`,
+          `M_{${label}} = ${q(Math.abs((p.loads[0] as { P: number }).P), F)} \\times ${q(Math.abs((p.loads[0] as { x: number }).x - x), u.length)}`,
+          `M_{${label}} = ${q(Math.abs(M), FL)}\\ (\\text{${rotWord(M) || 'zero'}})`,
+        ]
+      : [`${mDirTex}\\ M_{${label}} = \\sum F d:`, `M_{${label}} = ${joinTerms(loadTerms(x))}`, `M_{${label}} = ${q(showMoment(M, c), FL)}`];
+    steps.push({ title: `Moment about ${label}`, text: 'Moment of the applied loads about the point (force × perpendicular distance).', tex });
     lines.push({ key: `MO${label}`, group: 'momentAbout', label: `M_{${label}}`, value: q(showMoment(M, c), FL), note: rotWord(M) });
     expl.push(
       `The moment of a force about a point is the force times its perpendicular distance from the point, the moment arm d. ${
