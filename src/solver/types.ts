@@ -68,6 +68,7 @@ export interface NamedPoint {
 export interface Asked {
   reactions: boolean;
   momentAbout: string[]; // point labels, e.g. ["O"]
+  internalAt?: string[]; // labels where the internal shear and moment are asked ("V and M at C")
   shear: boolean; // SFD
   moment: boolean; // BMD
   maxValues: boolean; // max shear / max moment

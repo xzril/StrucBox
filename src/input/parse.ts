@@ -8,7 +8,7 @@ let n = 0;
 export const newId = () => `i${Date.now().toString(36)}${(n++).toString(36)}`;
 
 export function emptyAsked(): Problem['asked'] {
-  return { reactions: true, momentAbout: [], shear: false, moment: false, maxValues: false, deflection: false };
+  return { reactions: true, momentAbout: [], internalAt: [], shear: false, moment: false, maxValues: false, deflection: false };
 }
 
 export function blankProblem(): Problem {
@@ -65,7 +65,7 @@ export function fromAi(j: any, text: string): ParseResult {
       loads,
       points: j.points ?? [],
       units: j.units,
-      asked: j.asked,
+      asked: { ...j.asked, internalAt: j.asked?.internalAt ?? [] },
       stiffness: j.stiffness?.given ? { E: j.stiffness.E, Eunit: j.stiffness.Eunit, I: j.stiffness.I, Iunit: j.stiffness.Iunit } : undefined,
     },
   };
@@ -154,12 +154,20 @@ export function localParse(raw: string): ParseResult {
 
   p.asked = emptyAsked();
   p.asked.reactions = /reaction/.test(lower);
-  const about = [...text.matchAll(/moment (?:about|at) (?:point )?([A-Z])\b/gi)].map((m) => m[1].toUpperCase());
+  const about = [...text.matchAll(/moment (?:of [a-z ]{0,30})?about (?:point )?([A-Z])\b/gi)].map((m) => m[1].toUpperCase());
   p.asked.momentAbout = about;
-  p.asked.shear = /shear/.test(lower);
-  p.asked.moment = /bending moment|moment diagram|bmd/.test(lower);
+  // "the internal shear and moment at C", "shear force and bending moment at point C"
+  const internal = [...text.matchAll(/(?:internal|shear|normal force|moment)[a-z ,]{0,60}?\bat (?:points? )?([A-Z])\b(?:\s*and\s*([A-Z])\b)?/gi)]
+    .flatMap((m) => [m[1], m[2]])
+    .filter((l): l is string => !!l && !about.includes(l.toUpperCase()))
+    .map((l) => l.toUpperCase());
+  p.asked.internalAt = [...new Set(internal)];
+  for (const l of p.asked.internalAt)
+    if (!p.supports.some((s) => s.label === l)) p.points.push({ label: l, x: span / 2 });
+  p.asked.shear = /shear(?: force)? diagram|shear and (?:bending )?moment diagrams|\bsfd\b/.test(lower);
+  p.asked.moment = /moment diagram|\bbmd\b/.test(lower);
   p.asked.maxValues = /maximum|max\b/.test(lower);
   p.asked.deflection = /deflect/.test(lower);
-  if (!p.asked.reactions && !about.length && !p.asked.shear && !p.asked.moment && !p.asked.deflection) p.asked.reactions = true;
+  if (!p.asked.reactions && !about.length && !internal.length && !p.asked.shear && !p.asked.moment && !p.asked.deflection) p.asked.reactions = true;
   return { ok: true, problem: p };
 }

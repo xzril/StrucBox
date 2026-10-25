@@ -16,7 +16,7 @@ export interface Step {
 
 export interface ResultLine {
   key: string;
-  group: 'reactions' | 'momentAbout' | 'maxValues' | 'deflection';
+  group: 'reactions' | 'momentAbout' | 'internal' | 'maxValues' | 'deflection';
   label: string; // TeX
   value: string; // TeX
   note?: string;
@@ -210,8 +210,28 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
     const M = toGlobal(seg.M, seg.a).map((k) => showInternal(k, c));
     return [`${fmt(seg.a)} < x < ${fmt(seg.b)}:\\quad V = ${texPoly(V)}`, `\\phantom{${fmt(seg.a)} < x < ${fmt(seg.b)}:}\\quad M = ${texPoly(M)}`];
   }).flat();
-  if (p.asked.shear || p.asked.moment || p.asked.maxValues)
+  const internalAt = p.asked.internalAt ?? [];
+  if (p.asked.shear || p.asked.moment || p.asked.maxValues || internalAt.length)
     steps.push({ title: 'Shear and moment equations (method of sections)', text: `x in ${u.length}, V in ${F}, M in ${FL}.`, tex: eqTex });
+
+  // ---- internal shear and moment at named points
+  for (const label of internalAt) {
+    const x = pointX(p, label);
+    if (x === undefined) continue;
+    const at = (f: 'V' | 'M', side: 'left' | 'right') => showInternal(valueAt(s.segments, x, f, side), c);
+    const [Vl, Vr, M] = [at('V', 'left'), at('V', 'right'), at('M', 'right')];
+    const jump = Math.abs(Vl - Vr) > 1e-9 && x > 1e-9 && x < p.length - 1e-9;
+    const tex = jump
+      ? [`V_{${label}}^{-} = V(${fmt(x)}^{-}) = ${q(Vl, F)},\quad V_{${label}}^{+} = V(${fmt(x)}^{+}) = ${q(Vr, F)}`]
+      : [`V_{${label}} = V(${fmt(x)}) = ${q(x >= p.length - 1e-9 ? Vl : Vr, F)}`];
+    tex.push(`M_{${label}} = M(${fmt(x)}) = ${q(M, FL)}`);
+    steps.push({ title: `Shear and moment at ${label}`, text: `Cut the beam at ${label} (x = ${fmt(x)} ${u.length}) and use the equations above for the segment containing the cut.`, tex });
+    if (jump) {
+      lines.push({ key: `Vl${label}`, group: 'internal', label: `V_{${label}}^{-}`, value: q(Vl, F), note: 'just left' });
+      lines.push({ key: `Vr${label}`, group: 'internal', label: `V_{${label}}^{+}`, value: q(Vr, F), note: 'just right' });
+    } else lines.push({ key: `V${label}`, group: 'internal', label: `V_{${label}}`, value: q(x >= p.length - 1e-9 ? Vl : Vr, F) });
+    lines.push({ key: `Mi${label}`, group: 'internal', label: `M_{${label}}`, value: q(M, FL), note: M > 1e-9 ? 'sagging' : M < -1e-9 ? 'hogging' : undefined });
+  }
 
   // ---- maxima
   const Vabs = Math.abs(s.max.V.value) >= Math.abs(s.min.V.value) ? s.max.V : s.min.V;
