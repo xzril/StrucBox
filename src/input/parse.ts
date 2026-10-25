@@ -43,7 +43,8 @@ export function workedExample(): Problem {
   };
 }
 
-export type ParseResult = { ok: true; problem: Problem } | { ok: false; comingSoon: true; reason: string };
+// exact: the text itself placed every load ("x=1.0", "x=[1.5, 2.5]"), so the drawing should not move them
+export type ParseResult = { ok: true; problem: Problem; exact?: boolean } | { ok: false; comingSoon: true; reason: string };
 
 /** Map the AI's JSON (see server/ai.ts schema) to a Problem. */
 export function fromAi(j: any, text: string): ParseResult {
@@ -124,14 +125,41 @@ export function localParse(raw: string): ParseResult {
   else if (p.units.system === 'US') p.units.length = 'ft';
 
   const lens = lengths.map((m) => num(m[1]));
-  const spanMatch = text.match(new RegExp(`(?:span|long|length)[^\\d]{0,20}${NUM}\\s*${LEN}`, 'i'));
-  const span = spanMatch ? num(spanMatch[1]) : lens.length ? Math.max(...lens) : 6;
+  // position labels written next to each load: "x=1.0", "x=[1.5, 2.5]" (a range for a distributed load)
+  // (OCR of a typewriter font can drop the decimal point: "x=0 5" is 0.5)
+  const xLabels = [...text.matchAll(new RegExp(String.raw`\bx\s*=\s*(?:[\[({]\s*${NUM}\s*[,;]\s*${NUM}\s*[\])}]|(\d+)(?:\.(\d+)|\s(\d)\b)?)`, 'gi'))].map((m) =>
+    m[3] !== undefined ? { at: num(`${m[3]}.${m[4] ?? m[5] ?? 0}`), used: false } : { from: num(m[1]), to: num(m[2]), used: false },
+  );
+  const spanMatch =
+    text.match(new RegExp(String.raw`\bL\s*=\s*${NUM}`)) ?? text.match(new RegExp(`(?:span|long|length)[^\\d]{0,20}${NUM}\\s*${LEN}`, 'i'));
+  const xs = xLabels.flatMap((l) => ('at' in l ? [l.at!] : [l.from!, l.to!]));
+  const span = spanMatch ? num(spanMatch[1]) : xs.length ? Math.max(...xs) : lens.length ? Math.max(...lens) : 6;
   p.length = span;
   const positions = lens.filter((v) => v !== span);
-
-  forces.forEach((m, i) => p.loads.push({ id: newId(), kind: 'point', x: positions[i] ?? span / 2, P: num(m[1]) }));
-  dist.forEach((m) => p.loads.push({ id: newId(), kind: 'dist', x1: 0, x2: span, w1: num(m[1]), w2: num(m[1]) }));
-  moments.forEach((m) => p.loads.push({ id: newId(), kind: 'moment', x: span / 2, M: num(m[1]), dir: 'cw' }));
+  const take = (range: boolean) => {
+    const l = xLabels.find((l) => !l.used && 'from' in l === range);
+    if (l) l.used = true;
+    return l;
+  };
+  // a minus sign on any load means the problem uses y up: negative loads point down
+  const signed = [...forces, ...dist, ...moments].some((m) => /[-−–]\s*$/.test(text.slice(Math.max(0, m.index! - 2), m.index)));
+  const down = (m: RegExpMatchArray) => (signed && !/[-−–]\s*$/.test(text.slice(Math.max(0, m.index! - 2), m.index)) ? -1 : 1) * num(m[1]);
+  let placed = 0;
+  for (const m of [...forces, ...dist, ...moments].sort((a, b) => a.index! - b.index!)) {
+    if (dist.includes(m)) {
+      const r = take(true);
+      if (r) placed++;
+      p.loads.push({ id: newId(), kind: 'dist', x1: r?.from ?? 0, x2: r?.to ?? span, w1: down(m), w2: down(m) });
+    } else {
+      const at = take(false);
+      if (at) placed++;
+      const x = at?.at ?? (forces.includes(m) ? positions[forces.indexOf(m)] : undefined) ?? span / 2;
+      if (forces.includes(m)) p.loads.push({ id: newId(), kind: 'point', x, P: down(m) });
+      else p.loads.push({ id: newId(), kind: 'moment', x, M: num(m[1]), dir: 'cw' });
+    }
+  }
+  // position labels left over after the loads mark the supports
+  const supportXs = [...new Set(xLabels.filter((l) => !l.used && 'at' in l).map((l) => l.at!))].sort((a, b) => a - b);
   if (/triangular|linearly varying/.test(lower))
     p.loads.forEach((l) => {
       if (l.kind === 'dist') l.w1 = 0;
@@ -146,9 +174,10 @@ export function localParse(raw: string): ParseResult {
       { id: newId(), type: 'free', x: span, label: l2 },
     ];
   } else {
+    const [a, b] = supportXs.length >= 2 ? supportXs : [0, span];
     p.supports = [
-      { id: newId(), type: 'pin', x: 0, label: l1 },
-      { id: newId(), type: 'roller', x: span, label: l2 },
+      { id: newId(), type: 'pin', x: a, label: l1 },
+      { id: newId(), type: 'roller', x: b, label: l2 },
     ];
   }
 
@@ -169,5 +198,5 @@ export function localParse(raw: string): ParseResult {
   p.asked.maxValues = /maximum|max\b/.test(lower);
   p.asked.deflection = /deflect/.test(lower);
   if (!p.asked.reactions && !about.length && !internal.length && !p.asked.shear && !p.asked.moment && !p.asked.deflection) p.asked.reactions = true;
-  return { ok: true, problem: p };
+  return { ok: true, problem: p, exact: placed > 0 && placed === p.loads.length };
 }

@@ -78,7 +78,7 @@ export function InputScreen({ premium: ai, initialFile, onManual, onParsed }: Pr
   /** Offline reading: words from the text, geometry (lengths, load positions, arrow directions) from the drawing. */
   const offline = (text: string): ParseResult => {
     const r = localParse(text);
-    return r.ok && drawing ? { ok: true, problem: applyDrawing(r.problem, drawing) } : r;
+    return r.ok && drawing ? { ok: true, problem: applyDrawing(r.problem, drawing, r.exact) } : r;
   };
 
   const hasText = !!(ocrText.trim() || wordText.trim() || (ai && file) || drawing?.loads.length);

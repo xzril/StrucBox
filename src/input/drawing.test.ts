@@ -54,4 +54,37 @@ describe('reading the beam drawing', () => {
       { kind: 'point', x: 10, P: 6 },
     ]);
   });
+
+  // sheets that write each load's place as "x=1.0" or "x=[1.5, 2.5]": the text places the loads, the arrows give the shape
+  const offline = (img: string, ocr: string) => {
+    const r = localParse(ocr);
+    if (!r.ok) throw new Error();
+    expect(r.exact).toBe(true);
+    const p = applyDrawing(r.problem, readDrawing(readPng(img)), r.exact);
+    return { L: p.length, sup: p.supports.map((s) => [s.type, s.x]), loads: p.loads.map(({ id, ...l }) => l) };
+  };
+  it("owner's Q3: x= labels place the point loads and a partial UDL", () => {
+    const ocr = 'Q3. A simply supported beam is loaded by two point loads and a uniformly\ndistributed load (UDL), as shown in the below schematic.\n-300 N -200 N\nx=0.0 x=1.0 -100 N/m\nx=[1.5, 2.5]\nx=0.0 x=2.5\nL =2.5m\n';
+    expect(offline('src/input/fixtures/q3-udl.png', ocr)).toEqual({
+      L: 2.5,
+      sup: [['pin', 0], ['roller', 2.5]],
+      loads: [
+        { kind: 'point', x: 0, P: 300 },
+        { kind: 'point', x: 1, P: 200 },
+        { kind: 'dist', x1: 1.5, x2: 2.5, w1: 100, w2: 100 },
+      ],
+    });
+  });
+
+  it('same style with a triangular load: the arrows show it grows from zero', () => {
+    const ocr = 'Q5. A simply supported beam carries a point load and a distributed load.\n-400 N\nX=0.5 -150 N/m\nx=[1.0, 3.0]\n9) Oo\nX=0.0 x=3.0\nL=3m\n';
+    expect(offline('src/input/fixtures/q-triangle.png', ocr)).toEqual({
+      L: 3,
+      sup: [['pin', 0], ['roller', 3]],
+      loads: [
+        { kind: 'point', x: 0.5, P: 400 },
+        { kind: 'dist', x1: 1, x2: 3, w1: 0, w2: 150 },
+      ],
+    });
+  });
 });

@@ -36,6 +36,8 @@ export interface DrawingRead {
   loads: Load[];
   supports: { label: string; x: number; type: SupportType }[];
   points: { label: string; x: number }[]; // other lettered points on the beam, e.g. C
+  relative?: boolean; // no dimension line: x is a fraction of the beam (0 to 1), scaled by the text's length
+  arrows?: { x: number; len: number }[]; // every arrow standing on the beam (x as above, length in px)
 }
 
 const FORCE_UNITS: Record<string, ForceUnit> = { kn: 'kN', n: 'N', lb: 'lb', lbs: 'lb', kip: 'kip', kips: 'kip', k: 'kip' };
@@ -133,13 +135,24 @@ export function readDrawing(img: RGBA): DrawingRead {
       out.length = round(x1 - x0);
     }
   }
-  const L = out.length;
+  if (beam && !toX) {
+    // no dimension line: measure along the beam itself as 0..1; applyDrawing scales by the text's length
+    toX = (p) => (p - beam.x0) / (beam.x1 - beam.x0);
+    out.relative = true;
+  }
+  const L = out.length ?? (out.relative ? 1 : undefined);
   const snap = (x: number, tol = 0) => {
     if (L === undefined) return x;
     const t = Math.max(0.035 * L, 0.75 * tol);
     const near = [0, L, ...stops].sort((a, b) => Math.abs(a - x) - Math.abs(b - x))[0];
     return round(Math.abs(near - x) < t ? near : x);
   };
+
+  // every arrow standing on the beam, to judge a load's shape when the text gives its place and size
+  if (beam && toX)
+    out.arrows = shafts
+      .filter((s) => Math.abs(s.y1 - beam.y0) < textH / 2 || Math.abs(s.y0 - beam.y1) < textH / 2)
+      .map((s) => ({ x: toX!(s.x), len: s.y1 - s.y0 }));
 
   // point loads: a force label and the arrow next to it
   const forceWords = words.filter((w) => FORCE_UNITS[unitOf(w.text).toLowerCase()] && !w.text.includes('/') && !/[·]/.test(w.text));
@@ -276,7 +289,10 @@ export function readDrawing(img: RGBA): DrawingRead {
 }
 
 /** Put what the drawing shows into a problem read from the text. The drawing wins on geometry. */
-export function applyDrawing(p: Problem, d: DrawingRead): Problem {
+export function applyDrawing(p: Problem, d: DrawingRead, exact = false): Problem {
+  // the text placed every load ("x=[1.5, 2.5]"): keep its geometry, take only each load's shape from the arrows
+  if (exact) return { ...p, loads: p.loads.map((l) => (l.kind === 'dist' && l.w1 === l.w2 ? shapeOf(l, d, p.length) : l)) };
+  if (d.relative) d = scaled(d, p.length);
   const q: Problem = { ...p, loads: [...p.loads], supports: [...p.supports] };
   if (d.length) {
     q.length = d.length;
@@ -290,6 +306,34 @@ export function applyDrawing(p: Problem, d: DrawingRead): Problem {
   if (d.loads.length) q.loads = [...d.loads, ...q.loads.filter((l) => !fromDrawing.has(l.kind) && !(l.kind === 'point'))];
   q.loads = q.loads.map((l) => (l.kind === 'dist' ? { ...l, x2: Math.min(l.x2, q.length), x1: Math.min(l.x1, q.length) } : { ...l, x: Math.min(l.x, q.length) }));
   return q;
+}
+
+/** A drawing measured along the beam (0..1) put in the text's length units. */
+function scaled(d: DrawingRead, L: number): DrawingRead {
+  const r = (x: number) => round(x * L);
+  return {
+    ...d,
+    supports: d.supports.map((s) => ({ ...s, x: r(s.x) })),
+    points: d.points.map((q) => ({ ...q, x: r(q.x) })),
+    loads: d.loads.map((l) => (l.kind === 'dist' ? { ...l, x1: r(l.x1), x2: r(l.x2) } : { ...l, x: r(l.x) })),
+  };
+}
+
+/** A uniform load becomes triangular when the arrows over its span shrink to nothing at one end. */
+function shapeOf(l: Extract<Load, { kind: 'dist' }>, d: DrawingRead, length: number): Load {
+  const k = d.relative ? length : 1;
+  const span = l.x2 - l.x1;
+  const pts = (d.arrows ?? []).map((a) => ({ x: a.x * k, len: a.len })).filter((a) => a.x > l.x1 - 0.05 * span && a.x < l.x2 + 0.05 * span);
+  if (pts.length < 3) return l;
+  const n = pts.length;
+  const [sx, sy] = [pts.reduce((t, a) => t + a.x, 0), pts.reduce((t, a) => t + a.len, 0)];
+  const m = (n * pts.reduce((t, a) => t + a.x * a.len, 0) - sx * sy) / (n * pts.reduce((t, a) => t + a.x * a.x, 0) - sx * sx);
+  const c = (sy - m * sx) / n;
+  if (Math.abs(m * span) < 0.25 * Math.max(...pts.map((a) => a.len))) return l;
+  const zero = -c / m;
+  if (Math.abs(zero - l.x1) < 0.25 * span) return { ...l, w1: 0 };
+  if (Math.abs(zero - l.x2) < 0.25 * span) return { ...l, w2: 0 };
+  return l;
 }
 
 // ---------- pixels ----------
