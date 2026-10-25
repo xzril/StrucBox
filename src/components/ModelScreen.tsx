@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { postJson, providerName, WEB_BUILD, type Plan } from '../input/api';
 import { conventionText, fmt } from '../lib/format';
 import type { Palette } from '../lib/theme';
@@ -28,6 +28,26 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
   const [typePos, setTypePos] = useState(false);
   const [question, setQuestion] = useState('');
   const [tutor, setTutor] = useState<{ q: string; text?: string; error?: string; loading?: boolean } | null>(null);
+  const [show3d, setShow3d] = useState(true);
+  const pin = useRef<HTMLDivElement>(null);
+
+  // The 3D view stays pinned at the top and shrinks to half height as the solution scrolls.
+  // Set on the element directly so scrolling never re-renders the 3D scene; the margin keeps the page height fixed.
+  useEffect(() => {
+    const el = pin.current;
+    if (!el) return;
+    const fit = () => {
+      const full = Math.max(340, innerHeight * 0.52);
+      const h = Math.max(full / 2, full - scrollY);
+      el.style.height = `${h}px`;
+      el.style.marginBottom = `${full - h}px`;
+      el.classList.toggle('shrunk', h < full * 0.8);
+    };
+    fit();
+    addEventListener('scroll', fit, { passive: true });
+    addEventListener('resize', fit);
+    return () => (removeEventListener('scroll', fit), removeEventListener('resize', fit));
+  }, [show3d]);
 
   const outcome = useMemo(() => solve(p), [p]);
   const report = useMemo(() => (outcome.ok ? buildReport(p, outcome.solution, settings) : null), [p, outcome, settings]);
@@ -35,7 +55,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
     return (
       <div className="card center">
         <p className="error">{!outcome.ok && outcome.reason}</p>
-        <button onClick={onEdit}>Edit values</button>
+        <button onClick={onEdit}>Edit problem</button>
       </div>
     );
   const s = outcome.solution;
@@ -98,10 +118,23 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
 
   return (
     <div className="model">
+      {show3d ? (
+        <div className="pin3d" ref={pin}>
+          <BeamView3D problem={p} solution={s} showSolution={showSolution} bend={bend} onMoveLoad={moveLoad} C={C} />
+          <button className="small hide3d" onClick={() => setShow3d(false)}>
+            Hide 3D
+          </button>
+        </div>
+      ) : (
+        <button className="show3d" onClick={() => setShow3d(true)}>
+          Show 3D model
+        </button>
+      )}
       <div className="model-main">
         <div className="toolbar">
           <h2>{p.title}</h2>
           <div className="toggles">
+            <button onClick={onEdit}>✎ Edit problem</button>
             <button className={showSolution ? 'primary' : ''} onClick={() => setShowSolution(!showSolution)}>
               {showSolution ? 'Hide solution' : 'Show solution'}
             </button>
@@ -114,7 +147,6 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
             <button className={typePos ? 'primary' : ''} onClick={() => setTypePos(!typePos)}>
               ✎ Type load positions
             </button>
-            <button onClick={onEdit}>Edit values</button>
           </div>
         </div>
         {typePos && (
@@ -141,7 +173,6 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
             <span className="muted small">x is measured from the left end (0 to {fmt(p.length)} {u.length}).</span>
           </div>
         )}
-        <BeamView3D problem={p} solution={s} showSolution={showSolution} bend={bend} onMoveLoad={moveLoad} C={C} />
         {showSolution ? (
           diagrams.map((d) =>
             d.key === 'shear' ? (
@@ -295,7 +326,7 @@ function PosInput({ value, lo, hi, onCommit }: { value: number; lo: number; hi: 
 }
 
 function ResultTable({ lines, hidden }: { lines: ResultLine[]; hidden: boolean }) {
-  if (!lines.length) return <p className="muted small">Nothing selected. Use "Edit values" to choose what the problem asks for.</p>;
+  if (!lines.length) return <p className="muted small">Nothing selected. Use "Edit problem" to choose what the problem asks for.</p>;
   return (
     <table className="results">
       <tbody>

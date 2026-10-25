@@ -2,18 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { postJson, WEB_BUILD } from '../input/api';
 import { applyDrawing, readDrawing, type DrawingRead } from '../input/drawing';
 import { fileToBase64, imagePixels, runOcr } from '../input/ocr';
-import { blankProblem, fromAi, localParse, workedExample, type ParseResult } from '../input/parse';
-import { defaultUnits } from '../lib/units';
+import { fromAi, localParse, workedExample, type ParseResult } from '../input/parse';
 
 interface Props {
   premium: boolean;
-  hasLast: boolean;
-  defaultSystem: 'SI' | 'US';
-  onLast: () => void;
-  onParsed: (r: ParseResult) => void;
+  initialFile?: File;
+  onManual: () => void;
+  onParsed: (r: ParseResult, file?: File) => void;
 }
 
-export function InputScreen({ premium: ai, hasLast, defaultSystem, onLast, onParsed }: Props) {
+export function InputScreen({ premium: ai, initialFile, onManual, onParsed }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [ocrText, setOcrText] = useState('');
@@ -31,6 +29,7 @@ export function InputScreen({ premium: ai, hasLast, defaultSystem, onLast, onPar
       if (f) pick(f);
     };
     window.addEventListener('paste', onPaste);
+    if (initialFile) pick(initialFile);
     return () => window.removeEventListener('paste', onPaste);
   }, []);
 
@@ -64,13 +63,13 @@ export function InputScreen({ premium: ai, hasLast, defaultSystem, onLast, onPar
         r = fromAi(await postJson('/api/parse', { ocrText, wordText, image }), text);
       } else r = offline(text);
       if (r.ok) r.problem.answerKey = answerKey || undefined;
-      onParsed(r);
+      onParsed(r, file ?? undefined);
     } catch (e: any) {
       setError(`Could not read the problem with AI (${e?.message ?? e}). Reading it offline instead.`);
       const ocr = ocrText || (file ? (await runOcr(file).catch(() => '')).trim() : '');
       const r = offline([wordText, ocr].filter(Boolean).join('\n\n'));
       if (r.ok) r.problem.answerKey = answerKey || undefined;
-      setTimeout(() => onParsed(r), 1200);
+      setTimeout(() => onParsed(r, file ?? undefined), 1200);
     } finally {
       setBusy(false);
     }
@@ -80,17 +79,6 @@ export function InputScreen({ premium: ai, hasLast, defaultSystem, onLast, onPar
   const offline = (text: string): ParseResult => {
     const r = localParse(text);
     return r.ok && drawing ? { ok: true, problem: applyDrawing(r.problem, drawing) } : r;
-  };
-
-  const manual = () => {
-    const p = blankProblem();
-    p.units = defaultUnits(defaultSystem);
-    if (defaultSystem === 'US') {
-      p.length = 20;
-      p.supports[1].x = 20;
-      p.loads = [{ ...p.loads[0], x: 10 } as typeof p.loads[0]];
-    }
-    onParsed({ ok: true, problem: p });
   };
 
   const hasText = !!(ocrText.trim() || wordText.trim() || (ai && file) || drawing?.loads.length);
@@ -156,8 +144,7 @@ export function InputScreen({ premium: ai, hasLast, defaultSystem, onLast, onPar
       <section className="card side">
         <h2>Or start without a photo</h2>
         <button onClick={() => onParsed({ ok: true, problem: workedExample() })}>Worked example: moment about O</button>
-        <button onClick={manual}>Enter a beam by hand</button>
-        {hasLast && <button onClick={onLast}>Continue last problem</button>}
+        <button onClick={onManual}>Enter a beam by hand</button>
         <p className="muted small">
           The prototype solves determinate beams (simply supported, overhanging, cantilever) with point loads, uniform and triangular loads, and
           applied moments.

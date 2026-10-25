@@ -38,7 +38,7 @@ Indeterminate beams, more supports, trusses/frames/arches/cables, sandbox free-t
 - `src/solver/` pure math (`solve.ts`: reactions, exact piecewise V/M, double-integration deflection). Tests next to it.
 - `src/lib/report.ts` worked steps (TeX), result lines, template explanation. `format.ts` sign convention.
 - `src/input/` OCR (Tesseract, served offline from node_modules), local text parser, AI JSON mapping. `drawing.ts` reads the figure itself offline (deskew, beam, dimension line → length and x scale, point/distributed loads from arrows, couples from arcs, pin/roller/fixed); `applyDrawing` lets it override the text's geometry. Labels are read by `glyphs.ts`, a small MLP (`glyph-model.json`, trained by `scripts/train_glyphs.py` on printed + handwriting fonts). Test fixture: the owner's drawing in `src/input/fixtures/`.
-- `src/components/` screens: Input → ConfirmForm → ModelScreen (BeamView3D, Diagram).
+- `src/components/` screens: HomeScreen (folders of saved problems, bottom belt) → Input → ConfirmForm → FolderPicker → ModelScreen (pinned 3D BeamView3D, Diagram). Saved problems: `src/lib/library.ts` (localStorage).
 - `server/ai.ts` Vite middleware for `/api/status`, `/api/parse`, `/api/explain`, `/api/ask`; Claude or Gemini (`AI_PROVIDER`, keys from `.env`).
 - `src/lib/theme.ts` two-tone palette (navy structure/reactions, amber loads), light/dark.
 - Check: `npm test`, `npm run typecheck`.
