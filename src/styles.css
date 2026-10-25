@@ -476,6 +476,18 @@ table.results td {
 }
 .steps-list li {
   margin-bottom: 0.9rem;
+  padding: 0.7rem 0 0.2rem;
+  border-top: 1px solid var(--line);
+}
+.steps-list li:first-child {
+  border-top: none;
+}
+.steps-list li::marker,
+.steps-list strong {
+  color: var(--amber-text);
+}
+.steps-list .tex-block {
+  margin: 0.45rem 0;
 }
 .steps-list p {
   margin: 0.2rem 0;

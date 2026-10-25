@@ -195,40 +195,42 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
           );
         })}
 
-        {p.asked.momentAbout.map((label) => {
+        {p.asked.momentAbout.map((label, k) => {
           const x = pointX(p, label);
           if (x === undefined) return null;
           const M = momentAboutPoint(p, x);
           const ref = Math.max(1e-9, totalDownward(p.loads) * L);
           const r = 0.35 + 0.9 * Math.min(1, Math.abs(M) / ref);
+          // one row per moment arm, stacked above the beam, so the d labels never sit on each other
+          // shortcut: moment arms are drawn for the first asked point only, one row each, so labels never overlap; the steps list every arm
+          const arms = (k === 0 ? p.loads.filter((l) => l.kind === 'point' && Math.abs(l.x - x) > 1e-9) : []) as { id: string; x: number }[];
+          const rowY = (i: number) => H / 2 + 0.25 + i * 0.45;
           return (
             <group key={label}>
               <group position={[wx(x), dy(x), D / 2 + 0.05]}>
                 {Math.abs(M) > 1e-9 && <MomentArc r={r} dir={M > 0 ? 'ccw' : 'cw'} color={C.moment} />}
-                <Html position={[0, r + 0.3, 0]} center className="label moment-label">
-                  M<sub>{label}</sub> = {showSolution ? `${fmt(Math.abs(M))} ${Mu} ${rotWord(M)}` : '?'}
+                <Html position={[x > L / 2 ? -1 : 1, Math.max(r + 0.55, rowY(arms.length) + 0.1 - dy(x)), 0]} center className="label moment-label">
+                  M<sub>{label}</sub> = {showSolution ? `${fmt(Math.abs(M))} ${Mu} ${M > 0 ? '↺' : M < 0 ? '↻' : ''}` : '?'}
                 </Html>
               </group>
-              {p.loads.map((l) =>
-                l.kind === 'point' && Math.abs(l.x - x) > 1e-9 ? (
-                  <group key={l.id}>
-                    <Line
-                      points={[
-                        [wx(x), H / 2 + 0.15, D / 2 + 0.1],
-                        [wx(l.x), H / 2 + 0.15, D / 2 + 0.1],
-                      ]}
-                      color={C.moment}
-                      dashed
-                      dashSize={0.15}
-                      gapSize={0.1}
-                      lineWidth={2}
-                    />
-                    <Html position={[wx((x + l.x) / 2), H / 2 + 0.4, D / 2 + 0.1]} center className="label moment-label">
-                      d = {fmt(Math.abs(l.x - x))} {u.length}
-                    </Html>
-                  </group>
-                ) : null,
-              )}
+              {arms.map((l, i) => (
+                <group key={l.id}>
+                  <Line
+                    points={[
+                      [wx(x), rowY(i), D / 2 + 0.1],
+                      [wx(l.x), rowY(i), D / 2 + 0.1],
+                    ]}
+                    color={C.moment}
+                    dashed
+                    dashSize={0.15}
+                    gapSize={0.1}
+                    lineWidth={2}
+                  />
+                  <Html position={[wx(x) + Math.sign(l.x - x) * 0.75, rowY(i) + 0.13, D / 2 + 0.1]} center className="label moment-label">
+                    d = {fmt(Math.abs(l.x - x))} {u.length}
+                  </Html>
+                </group>
+              ))}
             </group>
           );
         })}
