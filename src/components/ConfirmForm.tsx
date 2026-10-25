@@ -23,7 +23,6 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
   const setLoad = (i: number, patch: Partial<Load>) => set({ loads: p.loads.map((l, j) => (j === i ? ({ ...l, ...patch } as Load) : l)) });
   const v = validate(p);
   const u = p.units;
-  const labels = [...p.supports.map((s) => s.label), ...p.points.map((q) => q.label)].filter((l, i, a) => l && a.indexOf(l) === i);
 
   const loadType = (l: Load) => (l.kind === 'dist' ? (l.w1 === l.w2 ? 'udl' : 'linear') : l.kind);
   const changeLoadType = (i: number, t: string) => {
@@ -229,46 +228,7 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
         </button>
 
         <h3>What does the problem ask for?</h3>
-        <div className="checks">
-          {(
-            [
-              ['reactions', 'Support reactions'],
-              ['shear', 'Shear force diagram'],
-              ['moment', 'Bending moment diagram'],
-              ['maxValues', 'Maximum shear and moment'],
-              ['deflection', 'Deflection'],
-            ] as const
-          ).map(([k, text]) => (
-            <label key={k}>
-              <input type="checkbox" checked={p.asked[k]} onChange={(e) => set({ asked: { ...p.asked, [k]: e.target.checked } })} /> {text}
-            </label>
-          ))}
-          {labels.map((l) => (
-            <label key={l}>
-              <input
-                type="checkbox"
-                checked={p.asked.momentAbout.includes(l)}
-                onChange={(e) =>
-                  set({ asked: { ...p.asked, momentAbout: e.target.checked ? [...p.asked.momentAbout, l] : p.asked.momentAbout.filter((m) => m !== l) } })
-                }
-              />{' '}
-              Moment of the loads about {l}
-            </label>
-          ))}
-          {labels.map((l) => {
-            const at = p.asked.internalAt ?? [];
-            return (
-              <label key={'i' + l}>
-                <input
-                  type="checkbox"
-                  checked={at.includes(l)}
-                  onChange={(e) => set({ asked: { ...p.asked, internalAt: e.target.checked ? [...at, l] : at.filter((m) => m !== l) } })}
-                />{' '}
-                Shear and moment at {l}
-              </label>
-            );
-          })}
-        </div>
+        <AskedChecks problem={p} onChange={onChange} />
 
         <h3>Beam stiffness (E and I)</h3>
         <label className="inline">
@@ -324,6 +284,54 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The "what does the problem ask for" checkboxes; also shown on the solution screen. */
+export function AskedChecks({ problem: p, onChange }: { problem: Problem; onChange: (p: Problem) => void }) {
+  const set = (patch: Partial<Problem>) => onChange({ ...p, ...patch });
+  const labels = [...p.supports.map((s) => s.label), ...p.points.map((q) => q.label)].filter((l, i, a) => l && a.indexOf(l) === i);
+  return (
+    <div className="checks">
+      {(
+        [
+          ['reactions', 'Support reactions'],
+          ['shear', 'Shear force diagram'],
+          ['moment', 'Bending moment diagram'],
+          ['maxValues', 'Maximum shear and moment'],
+          ['deflection', 'Deflection'],
+        ] as const
+      ).map(([k, text]) => (
+        <label key={k}>
+          <input type="checkbox" checked={p.asked[k]} onChange={(e) => set({ asked: { ...p.asked, [k]: e.target.checked } })} /> {text}
+        </label>
+      ))}
+      {labels.map((l) => (
+        <label key={l}>
+          <input
+            type="checkbox"
+            checked={p.asked.momentAbout.includes(l)}
+            onChange={(e) =>
+              set({ asked: { ...p.asked, momentAbout: e.target.checked ? [...p.asked.momentAbout, l] : p.asked.momentAbout.filter((m) => m !== l) } })
+            }
+          />{' '}
+          Moment of the loads about {l}
+        </label>
+      ))}
+      {labels.map((l) => {
+        const at = p.asked.internalAt ?? [];
+        return (
+          <label key={'i' + l}>
+            <input
+              type="checkbox"
+              checked={at.includes(l)}
+              onChange={(e) => set({ asked: { ...p.asked, internalAt: e.target.checked ? [...at, l] : at.filter((m) => m !== l) } })}
+            />{' '}
+            Shear and moment at {l}
+          </label>
+        );
+      })}
     </div>
   );
 }

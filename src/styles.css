@@ -866,3 +866,17 @@ main.home-main {
 .folder-pick label span:nth-child(2) {
   flex: 1;
 }
+
+.no-labels .label:not(.support-label) {
+  display: none;
+}
+.asked {
+  margin-bottom: 1rem;
+}
+.asked summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 2.5rem;
+  display: flex;
+  align-items: center;
+}
