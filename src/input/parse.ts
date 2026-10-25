@@ -51,11 +51,16 @@ export function fromAi(j: any, text: string): ParseResult {
   if (j.structure !== 'beam')
     return { ok: false, comingSoon: true, reason: j.unsupportedReason || `${String(j.structure).replace(/_/g, ' ')} problems` };
   const loads: Load[] = (j.loads ?? []).map((l: any): Load => {
-    if (l.kind === 'point') return { id: newId(), kind: 'point', x: l.x, P: l.P, label: l.label || undefined };
+    if (l.kind === 'point') {
+      // the AI copies the direction as drawn (slope legs or cos/sin); resolving into components happens here (D24)
+      const [dx, dy] = l.dirX || l.dirY ? [l.dirX ?? 0, l.dirY ?? 0] : [0, -1];
+      const k = l.P / Math.hypot(dx, dy);
+      return { id: newId(), kind: 'point', x: l.x, P: -k * dy, Px: k * dx || undefined, y: l.y || undefined, label: l.label || undefined };
+    }
     if (l.kind === 'moment') return { id: newId(), kind: 'moment', x: l.x, M: l.M, dir: l.dir, label: l.label || undefined };
     return { id: newId(), kind: 'dist', x1: l.x1, x2: l.x2, w1: l.w1, w2: l.w2, label: l.label || undefined };
   });
-  const supports: Support[] = (j.supports ?? []).map((s: any) => ({ id: newId(), type: s.type, x: s.x, label: s.label || '?' }));
+  const supports: Support[] = (j.supports ?? []).map((s: any) => ({ id: newId(), type: s.type, x: s.x, y: s.y || undefined, label: s.label || '?' }));
   return {
     ok: true,
     problem: {
@@ -91,7 +96,7 @@ export function localParse(raw: string): ParseResult {
   for (const [word, what] of [
     ['truss', 'Truss problems'],
     ['frame', 'Frame problems'],
-    ['incline', 'Incline and friction problems'],
+    ['incline\\b|inclined plane', 'Incline and friction problems'], // the plane, not an inclined force
     ['friction', 'Incline and friction problems'],
     ['pulley', 'Pulley and cable problems'],
     ['cable', 'Cable problems'],

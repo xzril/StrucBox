@@ -3,8 +3,8 @@
 
 import { distResultant } from '../solver/loads';
 import { add, scale, shiftedPow, type Poly } from '../solver/poly';
-import { momentAboutPoint, pointX, valueAt, type Solution } from '../solver/solve';
-import type { Problem } from '../solver/types';
+import { momentAboutPoint, pointAt, valueAt, type Solution } from '../solver/solve';
+import type { PointLoad, Problem } from '../solver/types';
 import { fmt, rotWord, showForce, showInternal, showMoment, type SignConvention } from './format';
 import { deflectionUnit, eiInProblemUnits, toDeflectionUnit, unitStr } from './units';
 
@@ -40,6 +40,16 @@ export function unitTex(u: string): string {
     .join('\\cdot ');
 }
 const q = (n: number, u: string) => `${fmt(n)}\\ ${unitTex(u)}`;
+
+/** cos or sin of an inclined force as TeX: a slope-triangle fraction (4/5) when its sides are small whole numbers, else the angle. */
+function dirFactor(part: number, l: PointLoad, trig: 'cos' | 'sin'): string {
+  const F = Math.hypot(l.P, l.Px ?? 0);
+  const [a, b] = [Math.abs(l.Px ?? 0) / F, Math.abs(l.P) / F];
+  // 1e-4: an angle typed as 36.87° still reads as the 3-4-5 triangle
+  for (let c = 2; c <= 25; c++)
+    if ([a, b].every((r) => Math.abs(r * c - Math.round(r * c)) < 1e-4)) return `\\left(\\tfrac{${Math.round((Math.abs(part) / F) * c)}}{${c}}\\right)`;
+  return `\\${trig} ${fmt((Math.atan2(b, a) * 180) / Math.PI)}^\\circ`;
+}
 
 /** p(t) with t = x - a, rewritten as a polynomial in x. */
 export function toGlobal(p: Poly, a: number): Poly {
@@ -82,6 +92,7 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
   const fDirTex = c.forcePositive === 'up' ? '\\uparrow +' : '\\downarrow +';
 
   // ---- free-body diagram
+  const inclined = p.loads.filter((l): l is PointLoad => l.kind === 'point' && !!l.Px);
   const dists = p.loads.filter((l) => l.kind === 'dist');
   const fbd: string[] = [];
   for (const l of dists) {
@@ -105,19 +116,34 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
     .join('; ');
   steps.push({
     title: 'Free-body diagram',
-    text: `Replace the supports with reactions: ${supText}. With no horizontal loads, ΣFx = 0 gives every horizontal reaction as zero.${
+    text: `Replace the supports with reactions: ${supText}. ${
+      inclined.length ? 'Resolve each inclined force into its x and y components.' : 'With no horizontal loads, ΣFx = 0 gives every horizontal reaction as zero.'
+    }${
       dists.length ? ' Replace each distributed load with its resultant acting at its centroid.' : ''
     }`,
-    tex: fbd,
+    tex: [
+      ...inclined.filter((l) => l.P).flatMap((l) => {
+        const mag = Math.hypot(l.P, l.Px!);
+        return [
+          `F_x = ${fmt(mag)}${dirFactor(l.Px!, l, 'cos')} = ${q(Math.abs(l.Px!), F)}\\ ${l.Px! > 0 ? '\\rightarrow' : '\\leftarrow'}`,
+          `F_y = ${fmt(mag)}${dirFactor(l.P, l, 'sin')} = ${q(Math.abs(l.P), F)}\\ ${l.P > 0 ? '\\downarrow' : '\\uparrow'}`,
+        ];
+      }),
+      ...fbd,
+    ],
   });
 
   // ---- equilibrium
-  const loadTerms = (about: number) =>
-    p.loads.map((l) => {
-      if (l.kind === 'moment') return { sign: (l.dir === 'ccw' ? 1 : -1) * mSign, tex: fmt(l.M) };
+  // each force component times its own arm (Varignon); a component through the point adds nothing
+  const loadTerms = (about: number, aboutY = 0) =>
+    p.loads.flatMap((l) => {
+      if (l.kind === 'moment') return [{ sign: (l.dir === 'ccw' ? 1 : -1) * mSign, tex: fmt(l.M) }];
       const { P, x } = l.kind === 'point' ? { P: l.P, x: l.x } : { P: distResultant(l).W, x: distResultant(l).xc };
-      const m = -P * (x - about);
-      return { sign: Math.sign(m || 1) * mSign, tex: `${fmt(Math.abs(P))}(${fmt(Math.abs(x - about))})` };
+      const [Px, dy] = l.kind === 'point' ? [l.Px ?? 0, (l.y ?? 0) - aboutY] : [0, 0];
+      const terms = [];
+      if (!Px || (P && Math.abs(x - about) > 1e-9)) terms.push({ sign: Math.sign(-P * (x - about) || 1) * mSign, tex: `${fmt(Math.abs(P))}(${fmt(Math.abs(x - about))})` });
+      if (Px && Math.abs(dy) > 1e-9) terms.push({ sign: Math.sign(-Px * dy) * mSign, tex: `${fmt(Math.abs(Px))}(${fmt(Math.abs(dy))})` });
+      return terms.length ? terms : [{ sign: 1, tex: '0' }];
     });
   const downTerms = p.loads
     .filter((l) => l.kind !== 'moment')
@@ -126,12 +152,13 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
       return { sign: -fSign * Math.sign(P || 1), tex: fmt(Math.abs(P)) };
     });
 
+  const eqFrom = steps.length;
   if (s.kind === 'simple') {
     const [r1, r2] = s.reactions;
     const A = r1.type === 'pin' ? r1 : r2;
     const B = A === r1 ? r2 : r1;
     const dB = B.x - A.x;
-    const mTerms = [{ sign: Math.sign(dB) * mSign, tex: `${B.label}_y(${fmt(Math.abs(dB))})` }, ...loadTerms(A.x)];
+    const mTerms = [{ sign: Math.sign(dB) * mSign, tex: `${B.label}_y(${fmt(Math.abs(dB))})` }, ...loadTerms(A.x, A.y)];
     steps.push({
       title: `Moments about ${A.label}`,
       tex: [
@@ -162,11 +189,26 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
       title: `Moments about ${R.label}`,
       tex: [
         `${mDirTex}\\ \\sum M_{${R.label}} = 0:`,
-        `${joinTerms([{ sign: 1, tex: `M_{${R.label}}` }, ...loadTerms(R.x)])} = 0`,
+        `${joinTerms([{ sign: 1, tex: `M_{${R.label}}` }, ...loadTerms(R.x, R.y)])} = 0`,
         `M_{${R.label}} = ${q(showMoment(R.M!, c), FL)}\\ (\\text{${rotWord(R.M!) || 'zero'}})`,
       ],
     });
   }
+
+  const held = s.reactions.find((r) => r.type !== 'roller');
+  if (inclined.length && held)
+    steps.push({
+      title: 'Horizontal equilibrium',
+      tex: [
+        `\\rightarrow +\\ \\sum F_x = 0:`,
+        `${joinTerms([{ sign: 1, tex: `${held.label}_x` }, ...inclined.map((l) => ({ sign: Math.sign(l.Px!), tex: fmt(Math.abs(l.Px!)) }))])} = 0`,
+        `${held.label}_x = ${q(held.Rx, F)}`,
+      ],
+    });
+
+  const a = p.asked;
+  // only a moment about a point asked: the reactions are not part of the answer, so their steps would only distract
+  if (!(a.reactions || a.shear || a.moment || a.maxValues || a.deflection || (a.internalAt ?? []).length)) steps.splice(eqFrom);
 
   for (const r of s.reactions) {
     const v = showForce(r.Ry, c);
@@ -177,39 +219,53 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
       value: q(v, F),
       note: Math.abs(r.Ry) < 1e-9 ? undefined : r.Ry > 0 ? 'upward' : 'downward',
     });
-    if (r.type !== 'roller') lines.push({ key: `Rx${r.label}`, group: 'reactions', label: `${r.label}_x`, value: q(0, F) });
+    if (r.type !== 'roller')
+      lines.push({ key: `Rx${r.label}`, group: 'reactions', label: `${r.label}_x`, value: q(r.Rx, F), note: Math.abs(r.Rx) < 1e-9 ? undefined : r.Rx > 0 ? 'to the right' : 'to the left' });
     if (r.type === 'fixed')
       lines.push({ key: `M${r.label}`, group: 'reactions', label: `M_{${r.label}}`, value: q(showMoment(r.M!, c), FL), note: rotWord(r.M!) });
   }
+  if (p.asked.reactions && held && inclined.length)
+    expl.push(`The horizontal components of the inclined loads are taken by ${held.label}, the only support that resists sideways movement: ${held.label}x = ${fmt(held.Rx)} ${F}.`);
   if (p.asked.reactions) {
     const [r1, r2] = s.reactions;
     expl.push(
       s.kind === 'simple'
         ? `The reactions keep the beam in equilibrium: together they carry the total load (ΣFy = 0), and their moments balance those of the loads (ΣM = 0). The support nearer the resultant load carries the larger share, here ${r1.label}y = ${fmt(r1.Ry)} ${F} and ${r2.label}y = ${fmt(r2.Ry)} ${F}.`
-        : `A fixed support resists both translation and rotation. Its vertical reaction equals the total load, ${fmt(r1.Ry)} ${F}, and its moment, ${fmt(Math.abs(r1.M!))} ${FL} ${rotWord(r1.M!)}, balances the turning effect of the loads about the wall.`,
+        : `A fixed support resists both translation and rotation. Its vertical reaction balances the total vertical load (${r1.label}y = ${fmt(r1.Ry)} ${F}), and its moment, ${fmt(Math.abs(r1.M!))} ${FL} ${rotWord(r1.M!)}, balances the turning effect of the loads about the support.`,
     );
   }
 
   // ---- moments about named points
   for (const label of p.asked.momentAbout) {
-    const x = pointX(p, label);
-    if (x === undefined) continue;
-    const M = momentAboutPoint(p, x);
-    const single = p.loads.length === 1 && p.loads[0].kind === 'point';
+    const at = pointAt(p, label);
+    if (!at) continue;
+    const { x, y } = at;
+    const M = momentAboutPoint(p, x, y);
+    // a fixed support's reaction moment is M_O too; call the moment of the loads (M_R)_O as the textbook does
+    const ML = p.supports.some((sp) => sp.type === 'fixed' && sp.label === label) ? `(M_R)_{${label}}` : `M_{${label}}`;
+    const single = p.loads.length === 1 && p.loads[0].kind === 'point' && !p.loads[0].Px && (p.loads[0].y ?? 0) === y;
     const tex = single
       ? [
-          `M_{${label}} = F \\times d:`,
-          `M_{${label}} = ${q(Math.abs((p.loads[0] as { P: number }).P), F)} \\times ${q(Math.abs((p.loads[0] as { x: number }).x - x), u.length)}`,
-          `M_{${label}} = ${q(Math.abs(M), FL)}\\ (\\text{${rotWord(M) || 'zero'}})`,
+          `${ML} = F \\times d:`,
+          `${ML} = ${q(Math.abs((p.loads[0] as { P: number }).P), F)} \\times ${q(Math.abs((p.loads[0] as { x: number }).x - x), u.length)}`,
+          `${ML} = ${q(Math.abs(M), FL)}\\ (\\text{${rotWord(M) || 'zero'}})`,
         ]
-      : [`${mDirTex}\\ M_{${label}} = \\sum F d:`, `M_{${label}} = ${joinTerms(loadTerms(x))}`, `M_{${label}} = ${q(showMoment(M, c), FL)}`];
-    steps.push({ title: `Moment about ${label}`, text: 'Moment of the applied loads about the point (force × perpendicular distance).', tex });
-    lines.push({ key: `MO${label}`, group: 'momentAbout', label: `M_{${label}}`, value: q(showMoment(M, c), FL), note: rotWord(M) });
+      : [`${mDirTex}\\ ${ML} = \\sum F d:`, `${ML} = ${joinTerms(loadTerms(x, y))}`, `${ML} = ${q(showMoment(M, c), FL)}\\ (\\text{${rotWord(M) || 'zero'}})`];
+    steps.push({
+      title: `Moment about ${label}`,
+      text: inclined.length
+        ? 'Moment of the applied loads about the point. Each force component times its own perpendicular distance (Varignon), x components with vertical arms, y components with horizontal arms.'
+        : 'Moment of the applied loads about the point (force × perpendicular distance).',
+      tex,
+    });
+    lines.push({ key: `MO${label}`, group: 'momentAbout', label: `${ML}`, value: q(showMoment(M, c), FL), note: rotWord(M) });
     expl.push(
       `The moment of a force about a point is the force times its perpendicular distance from the point, the moment arm d. ${
         single
           ? `The ${fmt((p.loads[0] as { P: number }).P)} ${F} load acts ${fmt(Math.abs((p.loads[0] as { x: number }).x - x))} ${u.length} from ${label}, so`
-          : `Summing each load's force times arm gives`
+          : inclined.length
+            ? `Resolving each inclined force into components and summing each component times its arm gives`
+            : `Summing each load's force times arm gives`
       } the moment about ${label} is ${fmt(Math.abs(M))} ${FL}${rotWord(M) ? ' ' + rotWord(M) : ''}. A longer arm gives a proportionally larger turning effect for the same force.`,
     );
   }
@@ -226,20 +282,23 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
 
   // ---- internal shear and moment at named points
   for (const label of internalAt) {
-    const x = pointX(p, label);
+    const x = pointAt(p, label)?.x;
     if (x === undefined) continue;
-    const at = (f: 'V' | 'M', side: 'left' | 'right') => showInternal(valueAt(s.segments, x, f, side), c);
+    const at = (f: 'V' | 'N' | 'M', side: 'left' | 'right') => showInternal(valueAt(s.segments, x, f, side), c);
     const [Vl, Vr, M] = [at('V', 'left'), at('V', 'right'), at('M', 'right')];
     const jump = Math.abs(Vl - Vr) > 1e-9 && x > 1e-9 && x < p.length - 1e-9;
     const tex = jump
       ? [`V_{${label}}^{-} = V(${fmt(x)}^{-}) = ${q(Vl, F)},\quad V_{${label}}^{+} = V(${fmt(x)}^{+}) = ${q(Vr, F)}`]
       : [`V_{${label}} = V(${fmt(x)}) = ${q(x >= p.length - 1e-9 ? Vl : Vr, F)}`];
+    const Nc = valueAt(s.segments, x, 'N', x >= p.length - 1e-9 ? 'left' : 'right');
+    if (inclined.length) tex.unshift(`N_{${label}} = ${q(Nc, F)}\\ (${Nc > 1e-9 ? '\\text{tension}' : Nc < -1e-9 ? '\\text{compression}' : '\\text{zero}'})`);
     tex.push(`M_{${label}} = M(${fmt(x)}) = ${q(M, FL)}`);
-    steps.push({ title: `Shear and moment at ${label}`, text: `Cut the beam at ${label} (x = ${fmt(x)} ${u.length}) and use the equations above for the segment containing the cut.`, tex });
+    steps.push({ title: `${inclined.length ? 'Normal force, shear' : 'Shear'} and moment at ${label}`, text: `Cut the beam at ${label} (x = ${fmt(x)} ${u.length}) and use the equations above for the segment containing the cut.`, tex });
     if (jump) {
       lines.push({ key: `Vl${label}`, group: 'internal', label: `V_{${label}}^{-}`, value: q(Vl, F), note: 'just left' });
       lines.push({ key: `Vr${label}`, group: 'internal', label: `V_{${label}}^{+}`, value: q(Vr, F), note: 'just right' });
     } else lines.push({ key: `V${label}`, group: 'internal', label: `V_{${label}}`, value: q(x >= p.length - 1e-9 ? Vl : Vr, F) });
+    if (inclined.length) lines.push({ key: `N${label}`, group: 'internal', label: `N_{${label}}`, value: q(Nc, F), note: Nc > 1e-9 ? 'tension' : Nc < -1e-9 ? 'compression' : undefined });
     lines.push({ key: `Mi${label}`, group: 'internal', label: `M_{${label}}`, value: q(M, FL), note: M > 1e-9 ? 'sagging' : M < -1e-9 ? 'hogging' : undefined });
   }
 

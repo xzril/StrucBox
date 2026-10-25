@@ -9,13 +9,16 @@ export interface Support {
   type: SupportType;
   x: number;
   label: string; // e.g. "O", "A", "B"
+  y?: number; // the support sits on a rigid arm this high above the beam axis (an L-shaped member); 0 if omitted
 }
 
 export interface PointLoad {
   id: string;
   kind: 'point';
   x: number;
-  P: number; // magnitude, positive = downward
+  P: number; // vertical component, positive = downward
+  Px?: number; // horizontal component, positive = to the right (an inclined force); 0 if omitted
+  y?: number; // point of application this high above the beam axis (a bracket or arm); 0 if omitted
   label?: string;
 }
 
@@ -63,6 +66,7 @@ export interface Stiffness {
 export interface NamedPoint {
   label: string;
   x: number;
+  y?: number; // height above the beam axis, e.g. a point O off the beam; 0 if omitted
 }
 
 export interface Asked {

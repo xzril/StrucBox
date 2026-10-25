@@ -22,14 +22,19 @@ export function totalDownward(loads: Load[]): number {
   return F;
 }
 
-/** Signed moment, counter-clockwise positive, of one load about x = p. */
-export function loadMomentAbout(l: Load, p: number): number {
-  if (l.kind === 'point') return -l.P * (l.x - p);
+/** Total horizontal force of all loads, positive to the right. */
+export function totalRight(loads: Load[]): number {
+  return loads.reduce((F, l) => F + (l.kind === 'point' ? l.Px ?? 0 : 0), 0);
+}
+
+/** Signed moment, counter-clockwise positive, of one load about the point (p, py); y up from the beam axis. */
+export function loadMomentAbout(l: Load, p: number, py = 0): number {
+  if (l.kind === 'point') return -l.P * (l.x - p) - (l.Px ?? 0) * ((l.y ?? 0) - py);
   if (l.kind === 'moment') return l.dir === 'ccw' ? l.M : -l.M;
   const { W, first } = distResultant(l);
   return -(first - W * p);
 }
 
-export function loadsMomentAbout(loads: Load[], p: number): number {
-  return loads.reduce((s, l) => s + loadMomentAbout(l, p), 0);
+export function loadsMomentAbout(loads: Load[], p: number, py = 0): number {
+  return loads.reduce((s, l) => s + loadMomentAbout(l, p, py), 0);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { localParse } from './parse';
+import { fromAi, localParse } from './parse';
 
 it('reads the PRD worked example offline', () => {
   const r = localParse('Simply supported beam: pin at O, roller at the right end, span 4 m. A 600 N load acts 1 m from O. Find the moment about O.');
@@ -38,4 +38,17 @@ describe('position labels written on the sheet', () => {
     ]);
     expect(r.problem.supports.map((s) => s.x)).toEqual([0, 3]);
   });
+});
+
+it("resolves the AI's copied slope (dirX, dirY) into components itself, and keeps plain loads vertical", () => {
+  const base = { structure: 'beam', units: { system: 'SI', force: 'N', length: 'm' }, length: 2, asked: {}, supports: [] };
+  const load = (l: object) => ({ kind: 'point', x: 0, P: 500, x1: 0, x2: 0, w1: 0, w2: 0, M: 0, dir: 'cw', label: '', y: 0, ...l });
+  const r = fromAi({ ...base, loads: [load({ dirX: 4, dirY: 3 }), load({ dirX: 0, dirY: -1 }), load({ dirX: 0, dirY: 0 })] }, '');
+  if (!r.ok) throw new Error();
+  expect(r.problem.loads).toMatchObject([{ P: -300, Px: 400 }, { P: 500, Px: undefined }, { P: 500, Px: undefined }]);
+});
+
+it('an inclined force is not an incline (friction) problem', () => {
+  expect(localParse('Determine the moment of the inclined 400 N force about point O.').ok).toBe(true);
+  expect(localParse('A block rests on an inclined plane.').ok).toBe(false);
 });

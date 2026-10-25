@@ -32,10 +32,11 @@ const PROBLEM_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['type', 'x', 'label'],
+        required: ['type', 'x', 'y', 'label'],
         properties: {
           type: { type: 'string', enum: ['pin', 'roller', 'fixed', 'free'] },
           x: { type: 'number' },
+          y: { type: 'number', description: 'height above the beam axis when the support sits on a rigid arm (L-shaped member); 0 otherwise' },
           label: { type: 'string' },
         },
       },
@@ -45,11 +46,14 @@ const PROBLEM_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['kind', 'x', 'P', 'x1', 'x2', 'w1', 'w2', 'M', 'dir', 'label'],
+        required: ['kind', 'x', 'P', 'dirX', 'dirY', 'y', 'x1', 'x2', 'w1', 'w2', 'M', 'dir', 'label'],
         properties: {
           kind: { type: 'string', enum: ['point', 'dist', 'moment'] },
           x: { type: 'number', description: 'point or moment position; 0 for dist' },
-          P: { type: 'number', description: 'point load magnitude, positive downward; 0 otherwise' },
+          P: { type: 'number', description: 'point load magnitude as printed (positive); 0 otherwise' },
+          dirX: { type: 'number', description: 'point load direction, horizontal part (right positive): the slope triangle leg or cos of the angle; 0 for a vertical load' },
+          dirY: { type: 'number', description: 'point load direction, vertical part (up positive): the slope triangle leg or sin of the angle; -1 for a plain downward load' },
+          y: { type: 'number', description: 'height of the point load above the beam axis (bracket or arm); 0 otherwise' },
           x1: { type: 'number' },
           x2: { type: 'number' },
           w1: { type: 'number', description: 'intensity at x1, positive downward' },
@@ -66,8 +70,8 @@ const PROBLEM_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['label', 'x'],
-        properties: { label: { type: 'string' }, x: { type: 'number' } },
+        required: ['label', 'x', 'y'],
+        properties: { label: { type: 'string' }, x: { type: 'number' }, y: { type: 'number', description: 'height above the beam axis; 0 if on it' } },
       },
     },
     asked: {
@@ -103,7 +107,8 @@ const PARSE_SYSTEM = `You read textbook statics problems and convert them to a J
 Rules:
 - x is measured from the beam's left end in the problem's length unit. Use the problem's own units (SI or US customary).
 - Supports: pin, roller, fixed, or free (free end). Label supports and points with the letters used in the problem (e.g. O, A, B).
-- Loads: "point" (P > 0 downward), "dist" for uniform or linearly varying (triangular) loads (w1 at x1, w2 at x2), "moment" for an applied couple with its direction.
+- Coordinates: x along the beam from its left end, y up from the beam axis. An L-shaped member is the beam plus a rigid arm: give the support (or point) at the arm's end its y.
+- Loads: "point" (P is the printed magnitude; dirX, dirY give the direction it points, copied from the slope triangle or angle without resolving: 500 N up and to the right on a 3-4-5 triangle with the 4 horizontal is dirX = 4, dirY = 3; a downward load is dirX = 0, dirY = -1), "dist" for uniform or linearly varying (triangular) loads (w1 at x1, w2 at x2), "moment" for an applied couple with its direction.
 - Unused numeric fields are 0. Use dir "cw" when unused.
 - "asked" lists only what the problem asks for.
 - If the problem is not a beam (truss, frame, incline with friction, etc.), set structure accordingly and explain briefly in unsupportedReason.
