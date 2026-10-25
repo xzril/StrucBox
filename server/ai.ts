@@ -222,7 +222,7 @@ export function aiPlugin(env: Record<string, string | undefined>): Plugin {
   const provider = pickProvider(env);
   const client = provider === 'anthropic' ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) : null;
   const ask = (q: Ask) =>
-    provider === 'anthropic' ? askClaude(client!, q) : askGemini(env.GEMINI_API_KEY!, env.GEMINI_MODEL || 'gemini-2.5-flash', q);
+    provider === 'anthropic' ? askClaude(client!, q) : askGemini(env.GEMINI_API_KEY!, env.GEMINI_MODEL || 'gemini-3.8-flash', q);
 
   const handler = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const url = req.url ?? '';
