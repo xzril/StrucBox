@@ -7,6 +7,7 @@ import { eiInProblemUnits, toDeflectionUnit, unitStr } from '../lib/units';
 import { solve } from '../solver/solve';
 import type { Load, Problem } from '../solver/types';
 import { BeamView3D } from './BeamView3D';
+import { AskedChecks } from './ConfirmForm';
 import { Diagram } from './Diagram';
 import type { Settings } from './SettingsDialog';
 import { Tex } from './Tex';
@@ -26,6 +27,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
   const [bend, setBend] = useState(true);
   const [ai, setAi] = useState<{ key: string; text?: string; error?: string; loading?: boolean } | null>(null);
   const [typePos, setTypePos] = useState(false);
+  const [labels, setLabels] = useState(true);
   const [question, setQuestion] = useState('');
   const [tutor, setTutor] = useState<{ q: string; text?: string; error?: string; loading?: boolean } | null>(null);
   const [show3d, setShow3d] = useState(true);
@@ -119,7 +121,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
   return (
     <div className="model">
       {show3d ? (
-        <div className="pin3d" ref={pin}>
+        <div className={`pin3d ${labels ? '' : 'no-labels'}`} ref={pin}>
           <BeamView3D problem={p} solution={s} showSolution={showSolution} bend={bend} onMoveLoad={moveLoad} C={C} />
           <button className="small hide3d" onClick={() => setShow3d(false)}>
             Hide 3D
@@ -144,8 +146,11 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
             <label>
               <input type="checkbox" checked={bend} onChange={(e) => setBend(e.target.checked)} /> Bend the beam
             </label>
+            <label>
+              <input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} /> Show labels
+            </label>
             <button className={typePos ? 'primary' : ''} onClick={() => setTypePos(!typePos)}>
-              ✎ Type load positions
+              ✎ Edit loads
             </button>
           </div>
         </div>
@@ -167,6 +172,9 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
                     <>x = {at(0, p.length, l.x, (x) => ({ ...l, x }))}</>
                   )}{' '}
                   {u.length}
+                  <button className="icon" aria-label={`Delete ${name}`} title="Delete this force" onClick={() => onChange({ ...p, loads: p.loads.filter((m) => m.id !== l.id) })}>
+                    ✕
+                  </button>
                 </label>
               );
             })}
@@ -216,6 +224,10 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
       </div>
 
       <aside className="panel">
+        <details className="asked">
+          <summary>What does the problem ask for?</summary>
+          <AskedChecks problem={p} onChange={onChange} />
+        </details>
         {p.text && <blockquote className="problem-text">{p.text}</blockquote>}
         <h3>Results</h3>
         <ResultTable lines={asked} hidden={!showSolution} />
