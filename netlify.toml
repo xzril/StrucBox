@@ -1,0 +1,7 @@
+# Online test version (free offline app only; no AI, no keys). Netlify builds this on every push.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"

@@ -1,5 +1,5 @@
 import { Html, Line, OrbitControls } from '@react-three/drei';
-import { Canvas, type ThreeEvent } from '@react-three/fiber';
+import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { fmt, rotWord } from '../lib/format';
@@ -85,6 +85,7 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
         <color attach="background" args={[C.bg]} />
         <ambientLight intensity={0.7} />
         <directionalLight position={[4, 8, 6]} intensity={1.1} />
+        <FitWidth />
         <OrbitControls ref={controls as never} enabled={!drag} target={[0, -0.2, 0]} />
         <gridHelper key={C.bg} args={[30, 30, C.grid[0], C.grid[1]]} position={[0, -3.3, 0]} />
 
@@ -239,8 +240,8 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
         </mesh>
       </Canvas>
       <div className="view-hint">
-        Drag loads along the beam{p.loads.some((l) => l.kind === 'dist') ? ', drag the blue dots to resize a distributed load' : ''}. Drag empty space to
-        rotate, scroll to zoom.
+        Drag loads along the beam{p.loads.some((l) => l.kind === 'dist') ? ', drag the dots to resize a distributed load' : ''}. Drag empty space to
+        rotate, scroll or pinch to zoom.
       </div>
       {note && <div className="view-note">{note}</div>}
     </div>
@@ -285,6 +286,15 @@ function Dimensions({ xs, wx, S, unit, color }: { xs: number[]; wx: (x: number) 
       )}
     </group>
   );
+}
+
+/** Back the camera off on narrow (phone) screens so the whole beam and its supports fit the width. */
+function FitWidth() {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    camera.position.z = Math.max(9.5, 15 / (size.width / size.height));
+  }, [camera, size.width, size.height]);
+  return null;
 }
 
 function DeformedBeam({ bx, dy, color }: { bx: (w: number) => number; dy: (x: number) => number; color: string }) {

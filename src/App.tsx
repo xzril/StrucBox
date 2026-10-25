@@ -4,7 +4,7 @@ import { ConfirmForm } from './components/ConfirmForm';
 import { InputScreen } from './components/InputScreen';
 import { ModelScreen } from './components/ModelScreen';
 import { SettingsDialog, type Settings, defaultSettings } from './components/SettingsDialog';
-import { aiStatus, providerName, type Plan } from './input/api';
+import { aiStatus, providerName, WEB_BUILD, type Plan } from './input/api';
 import { load, save } from './lib/storage';
 import { usePalette } from './lib/theme';
 import type { Problem } from './solver/types';
@@ -45,7 +45,7 @@ export default function App() {
         </nav>
         <span
           className={`plan ${plan.premium ? 'premium' : ''}`}
-          title={plan.premium ? 'AI tools are on (API key found).' : 'Offline version. Run SetApiKey.bat to unlock the AI tools.'}
+          title={plan.premium ? 'AI tools are on (API key found).' : WEB_BUILD ? 'Online test version: free offline app only.' : 'Offline version. Run SetApiKey.bat to unlock the AI tools.'}
         >
           {plan.premium ? `PREMIUM · AI (${providerName(plan.provider)})` : 'FREE · offline'}
         </span>
@@ -57,8 +57,8 @@ export default function App() {
         >
           {dark ? '☀' : '☾'}
         </button>
-        <button className="ghost" onClick={() => setShowSettings(true)}>
-          ⚙ Settings
+        <button className="ghost" aria-label="Settings" onClick={() => setShowSettings(true)}>
+          ⚙ <span className="hide-sm">Settings</span>
         </button>
       </header>
 

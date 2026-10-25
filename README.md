@@ -24,6 +24,16 @@ You need Node.js and Git (both already installed).
 
 The key is saved in `.env` on your computer only. `.env` is never uploaded to GitHub, and the key is never sent to the page.
 
+## Online test version (phone)
+
+`netlify.toml` builds a static web version: the free offline app only. It never contains AI features or keys. To put it online from your phone:
+
+1. Go to https://app.netlify.com/signup and sign up with GitHub.
+2. Tap **Add new project → Import an existing project → GitHub**, allow access to **StrucBox**, pick it, and tap **Deploy**. The settings fill in from `netlify.toml`.
+3. After about two minutes you get a link like `https://something.netlify.app`. Open it on your phone. Every push to GitHub updates it.
+
+Anyone with the link can open it. To take it down: **Project configuration → General → Delete project**.
+
 ## Using it
 
 1. **Problem:** upload or paste a photo, type the word problem, or both. Then press "Read problem". You can also start from the worked example or enter a beam by hand.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { postJson } from '../input/api';
+import { postJson, WEB_BUILD } from '../input/api';
 import { fileToBase64, runOcr } from '../input/ocr';
 import { blankProblem, fromAi, localParse, workedExample, type ParseResult } from '../input/parse';
 import { defaultUnits } from '../lib/units';
@@ -96,12 +96,11 @@ export function InputScreen({ premium: ai, hasLast, defaultSystem, onLast, onPar
             if (f) pick(f);
           }}
         >
-          {preview ? <img src={preview} alt="Problem" /> : <p>Click to choose a photo, drop it here, or paste it (Ctrl+V).</p>}
+          {preview ? <img src={preview} alt="Problem" /> : <p>Click or tap to take or choose a photo, drop it here, or paste it (Ctrl+V).</p>}
           <input
             ref={inputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             hidden
             onChange={(e) => e.target.files?.[0] && pick(e.target.files[0])}
           />
@@ -137,7 +136,7 @@ export function InputScreen({ premium: ai, hasLast, defaultSystem, onLast, onPar
           </button>
           <span className="muted small">{ai
               ? 'Premium: AI reads the photo and the text.'
-              : 'Free: offline text reading. Premium AI reading understands blurry photos and drawings (run SetApiKey.bat).'}</span>
+              : `Free: offline text reading. Premium AI reading understands blurry photos and drawings${WEB_BUILD ? '.' : ' (run SetApiKey.bat).'}`}</span>
         </div>
       </section>
 

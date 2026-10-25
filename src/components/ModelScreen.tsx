@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { postJson, providerName, type Plan } from '../input/api';
+import { postJson, providerName, WEB_BUILD, type Plan } from '../input/api';
 import { conventionText, fmt } from '../lib/format';
 import type { Palette } from '../lib/theme';
 import { buildReport, sampleDiagram, type ResultLine } from '../lib/report';
@@ -258,8 +258,8 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
             </>
           ) : (
             <p className="locked">
-              🔒 AI reading of photos, AI explanations with answer-key checks, and an ask-the-tutor box come with Premium. Run SetApiKey.bat
-              with a Claude or Gemini key, then restart StrucBox.
+              🔒 AI reading of photos, AI explanations with answer-key checks, and an ask-the-tutor box come with Premium.{' '}
+              {WEB_BUILD ? 'This online test version is the free offline app only.' : 'Run SetApiKey.bat with a Claude or Gemini key, then restart StrucBox.'}
             </p>
           )}
         </section>

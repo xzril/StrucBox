@@ -6,7 +6,11 @@ export interface Plan {
 }
 export const providerName = (p: Provider | null) => (p === 'gemini' ? 'Gemini' : 'Claude');
 
+/** The online web build is the free offline app only; AI runs only on the local dev server (StrucBox.bat). */
+export const WEB_BUILD = import.meta.env.PROD;
+
 export async function aiStatus(): Promise<Plan> {
+  if (WEB_BUILD) return { premium: false, provider: null };
   try {
     const r = await fetch('/api/status');
     const j = r.ok ? await r.json() : {};

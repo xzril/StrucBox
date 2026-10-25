@@ -521,6 +521,19 @@ input.bad {
   .topbar .steps {
     display: none;
   }
+  .topbar {
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+  }
+  .topbar button,
+  .plan {
+    white-space: nowrap;
+  }
+}
+@media (max-width: 480px) {
+  .hide-sm {
+    display: none;
+  }
 }
 
 button:focus-visible,
