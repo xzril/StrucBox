@@ -1,4 +1,5 @@
 import { createWorker } from 'tesseract.js';
+import type { RGBA } from './drawing';
 import { cleanOcrText, preprocess } from './preprocess';
 
 /** Read text from an image on this device (D2), fully offline (D17). Reads the photo as-is and
@@ -38,4 +39,18 @@ export function fileToBase64(file: Blob): Promise<{ data: string; mediaType: str
     r.onerror = reject;
     r.readAsDataURL(file);
   });
+}
+
+/** Pixels of a photo for the drawing reader, shrunk so the longest side is at most 1600 px. */
+export async function imagePixels(file: Blob): Promise<RGBA> {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k);
+  c.height = Math.round(bmp.height * k);
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#fff'; // transparent PNGs read as white paper
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  return ctx.getImageData(0, 0, c.width, c.height);
 }

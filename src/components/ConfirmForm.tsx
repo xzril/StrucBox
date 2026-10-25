@@ -212,7 +212,7 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
         </button>
 
         <h3>Other named points</h3>
-        <p className="muted small">Points where the problem asks for a value, e.g. "moment about C".</p>
+        <p className="muted small">Points where the problem asks for a value, e.g. "shear and moment at C".</p>
         {p.points.map((q, i) => (
           <div className="inline" key={i}>
             <input className="short" value={q.label} onChange={(e) => set({ points: p.points.map((r, j) => (j === i ? { ...r, label: e.target.value } : r)) })} />
@@ -255,6 +255,19 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
               Moment of the loads about {l}
             </label>
           ))}
+          {labels.map((l) => {
+            const at = p.asked.internalAt ?? [];
+            return (
+              <label key={'i' + l}>
+                <input
+                  type="checkbox"
+                  checked={at.includes(l)}
+                  onChange={(e) => set({ asked: { ...p.asked, internalAt: e.target.checked ? [...at, l] : at.filter((m) => m !== l) } })}
+                />{' '}
+                Shear and moment at {l}
+              </label>
+            );
+          })}
         </div>
 
         <h3>Beam stiffness (E and I)</h3>

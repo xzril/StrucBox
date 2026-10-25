@@ -12,7 +12,7 @@ You need Node.js and Git (both already installed).
 
 ## Free and Premium
 
-**Free (no key):** the full offline app. It solves every problem, reads photos with offline OCR, and writes template explanations.
+**Free (no key):** the full offline app. It solves every problem, reads photos with offline OCR and an offline drawing reader (beam length from the dimension line, load positions and up/down arrows, distributed loads, couples, supports), and writes template explanations. Always check the values on the confirm screen.
 
 **Premium (with an AI key):** adds AI tools. AI reads photos and drawings (much better on blurry or pixelated photos), writes an explanation for each problem and checks your answer key, and answers questions in an "Ask the tutor" box. The solver still computes every number. The top bar shows which plan is on.
 
@@ -50,6 +50,6 @@ The sign convention and default units are under ⚙ Settings.
 
 - `src/solver/`: the math (reactions, shear, moment, deflection). It has no UI code.
 - `src/lib/`: units, formatting, sign convention, and the worked steps.
-- `src/input/`: OCR and problem reading.
+- `src/input/`: OCR, problem reading, and the offline drawing reader (`drawing.ts`, with a small built-in label reader in `glyphs.ts`; retrain it with `scripts/train_glyphs.py`).
 - `src/components/`: the screens, the 3D view, and the diagrams.
 - `server/ai.ts`: the AI handler (Claude or Gemini), which runs inside the dev server.

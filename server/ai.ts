@@ -73,10 +73,11 @@ const PROBLEM_SCHEMA = {
     asked: {
       type: 'object',
       additionalProperties: false,
-      required: ['reactions', 'momentAbout', 'shear', 'moment', 'maxValues', 'deflection'],
+      required: ['reactions', 'momentAbout', 'internalAt', 'shear', 'moment', 'maxValues', 'deflection'],
       properties: {
         reactions: { type: 'boolean' },
-        momentAbout: { type: 'array', items: { type: 'string' }, description: 'labels of points a moment is asked about' },
+        momentAbout: { type: 'array', items: { type: 'string' }, description: 'labels of points the moment of the loads is asked about ("moment of the forces about O")' },
+        internalAt: { type: 'array', items: { type: 'string' }, description: 'labels of points where the internal shear and bending moment are asked ("internal shear and moment at C"); add the point to points if it is not a support' },
         shear: { type: 'boolean', description: 'shear force diagram asked' },
         moment: { type: 'boolean', description: 'bending moment diagram asked' },
         maxValues: { type: 'boolean' },
