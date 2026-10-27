@@ -11,12 +11,13 @@ interface Props {
   onDuplicate: (id: string) => void;
   onPhoto: (f: File) => void;
   onManual: () => void;
+  onTruss: () => void;
   onSettings: () => void;
 }
 
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
-export function HomeScreen({ lib, onLib, onOpen, onEdit, onMove, onDuplicate, onPhoto, onManual, onSettings }: Props) {
+export function HomeScreen({ lib, onLib, onOpen, onEdit, onMove, onDuplicate, onPhoto, onManual, onTruss, onSettings }: Props) {
   const [menu, setMenu] = useState<string | null>(null);
   const [search, setSearch] = useState<string | null>(null);
   const camera = useRef<HTMLInputElement>(null);
@@ -129,6 +130,9 @@ export function HomeScreen({ lib, onLib, onOpen, onEdit, onMove, onDuplicate, on
         </BeltButton>
         <BeltButton label="Add manually" onClick={onManual}>
           <path d="M12 5v14M5 12h14" />
+        </BeltButton>
+        <BeltButton label="Truss" onClick={onTruss}>
+          <path d="M3 18h18M3 18l4.5-9 4.5 9 4.5-9 4.5 9M7.5 9h9" />
         </BeltButton>
         <BeltButton label="Take photo" big onClick={() => camera.current?.click()}>
           <path d="M4 8h3l2-3h6l2 3h3v11H4zM12 9.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" />

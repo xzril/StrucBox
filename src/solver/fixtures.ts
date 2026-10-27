@@ -1,3 +1,4 @@
+import type { Joint, JointLoad, Truss } from './truss';
 import type { Load, Problem, Support } from './types';
 
 let n = 0;
@@ -47,4 +48,18 @@ export function workedExample(): Problem {
     text: 'Simply supported beam: pin at O, roller at the right end, span 4 m. A 600 N load acts 1 m from O. Find the moment about O.',
     asked: { reactions: false, momentAbout: ['O'], shear: false, moment: false, maxValues: false, deflection: false },
   });
+}
+
+/** A truss from [label, x, y] joints, "AB" member names, and [joint, Fx, Fy] loads (kN, m). */
+export function truss(joints: [string, number, number][], members: string[], supports: Truss['supports'], loads: [string, number, number][]): Truss {
+  return {
+    kind: 'truss',
+    title: '',
+    text: '',
+    units: { system: 'SI', force: 'kN', length: 'm' },
+    joints: joints.map(([label, x, y]): Joint => ({ label, x, y })),
+    members: members.map((m) => [m[0], m[1]]),
+    supports,
+    loads: loads.map(([joint, Fx, Fy]): JointLoad => ({ id: id(), joint, Fx, Fy })),
+  };
 }

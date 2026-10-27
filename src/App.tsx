@@ -5,6 +5,7 @@ import { FolderPicker } from './components/FolderPicker';
 import { HomeScreen } from './components/HomeScreen';
 import { InputScreen } from './components/InputScreen';
 import { ModelScreen } from './components/ModelScreen';
+import { TrussScreen, sampleTruss } from './components/TrussScreen';
 import { SettingsDialog, type Settings, defaultSettings } from './components/SettingsDialog';
 import { aiStatus, providerName, WEB_BUILD, type Plan } from './input/api';
 import { blankProblem, newId } from './input/parse';
@@ -12,9 +13,10 @@ import { addEntry, emptyLibrary, findEntry, mapEntry, removeEntry, thumbnail, ty
 import { load, save } from './lib/storage';
 import { usePalette } from './lib/theme';
 import { defaultUnits } from './lib/units';
+import type { Truss } from './solver/truss';
 import type { Problem } from './solver/types';
 
-type Stage = { name: 'home' } | { name: 'input'; file?: File } | { name: 'confirm' } | { name: 'model' } | { name: 'soon'; reason: string };
+type Stage = { name: 'home' } | { name: 'input'; file?: File } | { name: 'confirm' } | { name: 'model' } | { name: 'soon'; reason: string } | { name: 'truss' };
 /** The problem on screen: a saved entry (id) or a new one not yet put in a folder (id null). */
 type Current = { id: string | null; problem: Problem; file?: File };
 
@@ -25,6 +27,13 @@ export default function App() {
   const [picker, setPicker] = useState<{ moveId?: string } | null>(null);
   const [settings, setSettings] = useState<Settings>(() => load('settings', defaultSettings));
   const [showSettings, setShowSettings] = useState(false);
+  // shortcut: one truss, kept in localStorage; give trusses folders like beams once they are used
+  const [truss, setTruss] = useState<Truss>(() => load('truss', sampleTruss()));
+  const changeTruss = (t: Truss) => {
+    setTruss(t);
+    save('truss', t);
+  };
+  const openTruss = () => setStage({ name: 'truss' });
   const [plan, setPlan] = useState<Plan>({ premium: false, provider: null });
   useEffect(() => {
     aiStatus().then(setPlan);
@@ -102,7 +111,7 @@ export default function App() {
         <button className="brand" onClick={() => setStage({ name: 'home' })} title="Home">
           <span className="logo">▣</span> StrucBox
         </button>
-        {stage.name !== 'home' && (
+        {stage.name !== 'home' && stage.name !== 'truss' && (
           <nav className="steps">
             <span className={stage.name === 'input' ? 'on' : ''}>1 Problem</span>
             <span className={stage.name === 'confirm' ? 'on' : ''}>2 Confirm values</span>
@@ -141,6 +150,7 @@ export default function App() {
             onDuplicate={duplicate}
             onPhoto={(file) => setStage({ name: 'input', file })}
             onManual={manual}
+            onTruss={openTruss}
             onSettings={() => setShowSettings(true)}
           />
         )}
@@ -149,6 +159,7 @@ export default function App() {
             premium={plan.premium}
             initialFile={stage.file}
             onManual={manual}
+            onTruss={openTruss}
             onParsed={(r, file) => (r.ok ? start(r.problem, file) : setStage({ name: 'soon', reason: r.reason }))}
           />
         )}
@@ -164,7 +175,8 @@ export default function App() {
         {stage.name === 'model' && current && (
           <ModelScreen problem={current.problem} onChange={changeModel} settings={settings} onEdit={() => setStage({ name: 'confirm' })} C={C} plan={plan} />
         )}
-        {stage.name === 'soon' && <ComingSoon reason={stage.reason} onBack={() => setStage({ name: 'home' })} />}
+        {stage.name === 'soon' && <ComingSoon reason={stage.reason} onBack={() => setStage({ name: 'home' })} onTruss={/truss/i.test(stage.reason) ? openTruss : undefined} />}
+        {stage.name === 'truss' && <TrussScreen truss={truss} onChange={changeTruss} C={C} />}
       </main>
 
       {picker && (

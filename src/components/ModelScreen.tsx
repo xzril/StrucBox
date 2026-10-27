@@ -338,7 +338,7 @@ function PosInput({ value, lo, hi, onCommit }: { value: number; lo: number; hi: 
   );
 }
 
-function ResultTable({ lines, hidden }: { lines: ResultLine[]; hidden: boolean }) {
+export function ResultTable({ lines, hidden }: { lines: ResultLine[]; hidden: boolean }) {
   if (!lines.length) return <p className="muted small">Nothing selected. Use "Edit problem" to choose what the problem asks for.</p>;
   return (
     <table className="results">

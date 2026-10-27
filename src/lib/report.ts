@@ -39,7 +39,7 @@ export function unitTex(u: string): string {
     })
     .join('\\cdot ');
 }
-const q = (n: number, u: string) => `${fmt(n)}\\ ${unitTex(u)}`;
+export const q = (n: number, u: string) => `${fmt(n)}\\ ${unitTex(u)}`;
 
 /** cos or sin of an inclined force as TeX: a slope-triangle fraction (4/5) when its sides are small whole numbers, else the angle. */
 function dirFactor(part: number, l: PointLoad, trig: 'cos' | 'sin'): string {
@@ -82,7 +82,7 @@ export function texPoly(p: Poly, v = 'x'): string {
   return s.startsWith('+ ') ? s.slice(2) : s.replace(/^- /, '-');
 }
 
-function joinTerms(terms: { sign: number; tex: string }[]): string {
+export function joinTerms(terms: { sign: number; tex: string }[]): string {
   return terms
     .map((t, i) => (i === 0 ? (t.sign < 0 ? '-' : '') + t.tex : (t.sign < 0 ? ' - ' : ' + ') + t.tex))
     .join('');

@@ -1,4 +1,4 @@
-export function ComingSoon({ reason, onBack }: { reason: string; onBack: () => void }) {
+export function ComingSoon({ reason, onBack, onTruss }: { reason: string; onBack: () => void; onTruss?: () => void }) {
   return (
     <div className="card center soon">
       <div className="soon-badge">Coming soon!</div>
@@ -6,7 +6,12 @@ export function ComingSoon({ reason, onBack }: { reason: string; onBack: () => v
         <strong>{reason}</strong>
       </p>
       <p>This problem type is not in the prototype yet.</p>
-      <p className="muted">This version solves statically determinate beams: simply supported, overhanging, and cantilever.</p>
+      <p className="muted">This version solves statically determinate beams (simply supported, overhanging, cantilever) and plane trusses entered by hand.</p>
+      {onTruss && (
+        <button className="primary" onClick={onTruss}>
+          Enter the truss by hand
+        </button>
+      )}
       <button className="primary" onClick={onBack}>
         Try another problem
       </button>

@@ -8,10 +8,11 @@ interface Props {
   premium: boolean;
   initialFile?: File;
   onManual: () => void;
+  onTruss: () => void;
   onParsed: (r: ParseResult, file?: File) => void;
 }
 
-export function InputScreen({ premium: ai, initialFile, onManual, onParsed }: Props) {
+export function InputScreen({ premium: ai, initialFile, onManual, onTruss, onParsed }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [ocrText, setOcrText] = useState('');
@@ -145,6 +146,7 @@ export function InputScreen({ premium: ai, initialFile, onManual, onParsed }: Pr
         <h2>Or start without a photo</h2>
         <button onClick={() => onParsed({ ok: true, problem: workedExample() })}>Worked example: moment about O</button>
         <button onClick={onManual}>Enter a beam by hand</button>
+        <button onClick={onTruss}>Enter a truss by hand</button>
         <p className="muted small">
           The prototype solves determinate beams (simply supported, overhanging, cantilever) with point loads, uniform and triangular loads, and
           applied moments.
