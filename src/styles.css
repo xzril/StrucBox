@@ -566,6 +566,9 @@ input.bad {
   border-radius: 6px;
   margin-bottom: 0.6rem;
 }
+.truss-label {
+  font-weight: 600;
+}
 .truss-svg {
   width: 100%;
   max-height: 60vh;

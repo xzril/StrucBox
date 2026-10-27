@@ -401,7 +401,7 @@ function DeformedBeam({ bx, dy, color }: { bx: (w: number) => number; dy: (x: nu
 }
 
 /** Arrow along y from `from` to `to` (tip at `to`), in the parent's frame. */
-function Arrow({ from, to, color, thin }: { from: number; to: number; color: string; thin?: boolean }) {
+export function Arrow({ from, to, color, thin }: { from: number; to: number; color: string; thin?: boolean }) {
   const len = Math.abs(to - from);
   const dir = Math.sign(to - from) || -1;
   const head = Math.min(thin ? 0.18 : 0.28, len * 0.6);
@@ -448,7 +448,7 @@ function MomentArc({ r, dir, color }: { r: number; dir: 'cw' | 'ccw'; color: str
   );
 }
 
-function SupportGlyph({ type, atRight, color }: { type: Problem['supports'][number]['type']; atRight: boolean; color: string }) {
+export function SupportGlyph({ type, atRight, color }: { type: Problem['supports'][number]['type']; atRight: boolean; color: string }) {
   const tri = useMemo(() => {
     const s = new THREE.Shape();
     s.moveTo(0, 0);

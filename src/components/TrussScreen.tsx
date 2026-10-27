@@ -8,6 +8,7 @@ import { memberName, solveTruss, type JointLoad, type Truss, type TrussSolution 
 import { newId } from '../input/parse';
 import { ResultTable } from './ModelScreen';
 import { Tex } from './Tex';
+import { TrussView3D } from './TrussView3D';
 
 /** Hibbeler 6-9 as a starting point. */
 export function sampleTruss(): Truss {
@@ -52,6 +53,7 @@ export function TrussScreen({ truss: t, photo, onChange, onSave, C }: { truss: T
   const [photoUrl] = useState(() => photo && URL.createObjectURL(photo));
   const [showSolution, setShowSolution] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [view3d, setView3d] = useState(true);
   const [askedText, setAskedText] = useState(() => (t.asked ?? []).join(', '));
   const [membersText, setMembersText] = useState(() => t.members.map((m) => (m[0].length > 1 || m[1].length > 1 ? m.join('-') : memberName(m))).join(', '));
   const set = (patch: Partial<Truss>) => onChange({ ...t, ...patch });
@@ -256,11 +258,18 @@ export function TrussScreen({ truss: t, photo, onChange, onSave, C }: { truss: T
         <div className="toolbar">
           <h2>{t.title || 'Truss'}</h2>
           {onSave && <button onClick={onSave}>Save to folder</button>}
+          <button onClick={() => setView3d(!view3d)}>{view3d ? '2D drawing' : '3D view'}</button>
           <button className={showSolution ? 'primary' : ''} onClick={() => setShowSolution(!showSolution)}>
             {showSolution ? 'Hide solution' : 'Show solution'}
           </button>
         </div>
-        {r.ok ? <TrussDrawing t={t} s={r.solution} showSolution={showSolution} C={C} /> : <p className={r.comingSoon ? 'warn' : 'error'}>{r.comingSoon ? `Coming soon! ${r.reason}: not in the prototype yet.` : r.reason}</p>}
+        {r.ok ? (
+          view3d ? (
+            <TrussView3D t={t} s={r.solution} showSolution={showSolution} C={C} />
+          ) : (
+            <TrussDrawing t={t} s={r.solution} showSolution={showSolution} C={C} />
+          )
+        ) : <p className={r.comingSoon ? 'warn' : 'error'}>{r.comingSoon ? `Coming soon! ${r.reason}: not in the prototype yet.` : r.reason}</p>}
         {report && (
           <>
             <h3>Results</h3>
