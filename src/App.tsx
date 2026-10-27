@@ -170,8 +170,6 @@ export default function App() {
             onDuplicate={duplicate}
             onPhoto={(file) => setStage({ name: 'input', file })}
             onManual={manual}
-            onTruss={openTruss}
-            onCable={openCable}
             onSettings={() => setShowSettings(true)}
           />
         )}

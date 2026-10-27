@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { fmt, polyText, rotWord } from '../lib/format';
 import type { Palette } from '../lib/theme';
-import { bendScale } from '../lib/bend';
+import { bendScale, loadSize } from '../lib/bend';
 import { unitStr } from '../lib/units';
 import { momentAboutPoint, pointAt, valueAt, type Solution } from '../solver/solve';
 import { intensity, totalDownward } from '../solver/loads';
@@ -35,7 +35,8 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
   const u = p.units;
 
   // deflection scale (D14): true scale when visible, else exaggerated with a notice
-  const { k, trueScale } = bendScale(p, s, S);
+  const q0 = useRef(loadSize(p)).current; // load size when the view opened; edits bend in proportion
+  const { k, trueScale } = bendScale(p, s, S, q0);
   const dy = (x: number) => (bend ? valueAt(s.segments, x, 'EIy') * k : 0);
   const note = !bend ? '' : trueScale ? 'Deflection drawn to true scale.' : 'Deflection not to scale, exaggerated for visualization.';
 
