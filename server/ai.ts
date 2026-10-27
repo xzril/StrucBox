@@ -11,7 +11,7 @@ const MODEL = 'claude-opus-5-5';
 const PROBLEM_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['structure', 'unsupportedReason', 'title', 'units', 'length', 'supports', 'loads', 'points', 'asked', 'stiffness', 'truss'],
+  required: ['structure', 'unsupportedReason', 'title', 'units', 'length', 'supports', 'loads', 'points', 'asked', 'stiffness', 'truss', 'cable'],
   properties: {
     structure: { type: 'string', enum: ['beam', 'truss', 'frame', 'arch', 'cable', 'incline_or_friction', 'other'] },
     unsupportedReason: { type: 'string', description: 'Empty if this is a beam problem.' },
@@ -125,6 +125,34 @@ const PROBLEM_SCHEMA = {
         askedMembers: { type: 'array', items: { type: 'string' }, description: 'members whose force is asked; [] if "each member"' },
       },
     },
+    cable: {
+      type: 'object',
+      additionalProperties: false,
+      description: 'Hanging cable or chain only (structure "cable", Hibbeler 7.4); zeros / [] otherwise. x from the left support A, y up from A.',
+      required: ['labelA', 'labelB', 'span', 'rise', 'loads', 'w1', 'w2', 'w0', 'w0IsMass', 'given'],
+      properties: {
+        labelA: { type: 'string' },
+        labelB: { type: 'string' },
+        span: { type: 'number', description: 'horizontal distance from A to B' },
+        rise: { type: 'number', description: 'height of B above A (negative if lower)' },
+        loads: {
+          type: 'array',
+          items: { type: 'object', additionalProperties: false, required: ['label', 'x', 'P'], properties: { label: { type: 'string' }, x: { type: 'number' }, P: { type: 'number', description: 'downward, as printed' } } },
+          description: 'concentrated loads hanging from the cable',
+        },
+        w1: { type: 'number', description: 'load per horizontal length at A (a deck or uniform load along the horizontal); 0 if none' },
+        w2: { type: 'number', description: 'the same at B; equal to w1 when uniform' },
+        w0: { type: 'number', description: "the cable's own weight (or mass) per length of cable, as printed; 0 if none" },
+        w0IsMass: { type: 'boolean', description: 'true when w0 is printed in kg/m' },
+        given: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind', 'x', 'y', 'value'],
+          description: 'the one given fact that fixes the sag: y = a point (x, y) the cable passes through (e.g. a load drawn 3 m below A has y = -3); sag = lowest point h (value) below A; Tmax, H (horizontal tension) or length = value',
+          properties: { kind: { type: 'string', enum: ['y', 'sag', 'Tmax', 'H', 'length'] }, x: { type: 'number' }, y: { type: 'number' }, value: { type: 'number' } },
+        },
+      },
+    },
     stiffness: {
       type: 'object',
       additionalProperties: false,
@@ -149,7 +177,8 @@ Rules:
 - Unused numeric fields are 0. Use dir "cw" when unused.
 - "asked" lists only what the problem asks for.
 - A plane truss: set structure "truss" and fill "truss" (joints with coordinates from the figure's dimensions, members, supports, joint loads, asked members); leave the beam fields at 0 / [].
-- If the problem is neither a beam nor a plane truss (frame, space truss, incline with friction, etc.), set structure accordingly and explain briefly in unsupportedReason.
+- A hanging cable or chain carrying loads or its own weight (sag, tension in each segment, catenary): set structure "cable" and fill "cable". A cable that only holds up a beam is part of the beam (a roller).
+- If the problem is neither a beam, a plane truss nor a hanging cable (frame, space truss, incline with friction, etc.), set structure accordingly and explain briefly in unsupportedReason.
 - The OCR text may contain errors; the photo, if present, is the better source for the diagram.`;
 
 const EXPLAIN_SYSTEM = `You write the explanation panel of a statics teaching app for engineering students.

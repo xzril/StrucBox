@@ -421,7 +421,7 @@ export function Arrow({ from, to, color, thin }: { from: number; to: number; col
 }
 
 /** Transparent but still hit by the pointer (visible={false} meshes are skipped). */
-const Invisible = () => <meshBasicMaterial transparent opacity={0} depthWrite={false} />;
+export const Invisible = () => <meshBasicMaterial transparent opacity={0} depthWrite={false} />;
 
 function HitBox({ h }: { h: number }) {
   return (
@@ -490,7 +490,7 @@ export function SupportGlyph({ type, atRight, color }: { type: Problem['supports
 }
 
 
-function snapStep(L: number) {
+export function snapStep(L: number) {
   const raw = L / 40;
   let step = 10 ** Math.floor(Math.log10(raw));
   if (raw / step >= 5) step *= 5;

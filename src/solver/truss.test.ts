@@ -153,7 +153,7 @@ describe('reading a truss problem', () => {
       },
       '',
     );
-    if (r.ok || !r.truss) throw new Error('expected a truss');
+    if (r.ok || r.truss?.kind !== 'truss') throw new Error('expected a truss');
     expect(r.truss.supports[1]).toEqual({ joint: 'D', type: 'roller' });
     expectForces(r.truss, ok(r.truss), { AE: -5.66, BE: 3.16 });
   });

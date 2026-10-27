@@ -3,6 +3,7 @@
 // user confirms every value before the model is built (D7).
 
 import { parsePoly } from '../lib/format';
+import type { Cable, CableGiven } from '../solver/cable';
 import type { Truss } from '../solver/truss';
 import type { ForceUnit, LengthUnit, Load, Problem, Support } from '../solver/types';
 
@@ -46,8 +47,8 @@ export function workedExample(): Problem {
 }
 
 // exact: the text itself placed every load ("x=1.0", "x=[1.5, 2.5]"), so the drawing should not move them
-// a truss is not a beam: it comes back as "not ok" with the truss read so far, and goes to the Truss screen
-export type ParseResult = { ok: true; problem: Problem; exact?: boolean } | { ok: false; comingSoon: true; reason: string; truss?: Truss };
+// a truss or cable is not a beam: it comes back as "not ok" with what was read so far, and goes to its own screen
+export type ParseResult = { ok: true; problem: Problem; exact?: boolean } | { ok: false; comingSoon: true; reason: string; truss?: Truss | Cable };
 
 /** Map the AI's JSON (see server/ai.ts schema) to a Problem. */
 export function fromAi(j: any, text: string): ParseResult {
@@ -72,6 +73,31 @@ export function fromAi(j: any, text: string): ParseResult {
           return { id: newId(), joint: l.joint, Fx: k * dx, Fy: k * dy };
         }),
         asked: t.askedMembers ?? [],
+      },
+    };
+  }
+  if (j.structure === 'cable' && j.cable?.span) {
+    const k = j.cable;
+    const pts = (k.loads ?? []).map((l: any, i: number) => ({ id: newId(), label: l.label || String.fromCharCode(66 + i), x: l.x, P: l.P }));
+    const given: CableGiven =
+      k.given.kind === 'y' ? { kind: 'y', x: k.given.x, y: k.given.y } : k.given.kind === 'sag' ? { kind: 'sag', h: k.given.value } : k.given.kind === 'Tmax' ? { kind: 'Tmax', T: k.given.value } : k.given.kind === 'H' ? { kind: 'H', H: k.given.value } : { kind: 'length', s: k.given.value };
+    return {
+      ok: false,
+      comingSoon: true,
+      reason: 'Cable problems',
+      truss: {
+        kind: 'cable',
+        title: j.title || 'Cable',
+        text,
+        units: j.units,
+        A: { label: k.labelA || 'A', x: 0, y: 0 },
+        B: { label: k.labelB || 'B', x: k.span, y: k.rise },
+        points: pts,
+        w1: k.w1,
+        w2: k.w2,
+        // the AI copies a mass per length as printed; the weight is worked out here (D24)
+        w0: k.w0IsMass ? k.w0 * 9.81 : k.w0,
+        given,
       },
     };
   }
@@ -138,9 +164,47 @@ export function trussFromText(raw: string): Truss {
   };
 }
 
+/** Offline cable reader: span, sag, own weight or uniform load, and the given tension or length from the words; the rest from the figure. */
+export function cableFromText(raw: string): Cable {
+  const text = raw.replace(/\s+/g, ' ');
+  const num = (s?: string) => (s ? parseFloat(s.replace(',', '.')) : NaN);
+  const unit = text.match(new RegExp(`${NUM}\\s*${FORCE}\\b`, 'i'))?.[2];
+  const kgm = text.match(new RegExp(`${NUM}\\s*kg\\s*/\\s*${LEN}`, 'i'));
+  const perLen = text.match(new RegExp(`${NUM}\\s*${FORCE}\\s*/\\s*${LEN}`, 'i'));
+  const fu = unit ? forceUnit(unit) : perLen ? forceUnit(perLen[2]) : kgm ? 'N' : 'kN';
+  const system = fu === 'N' || fu === 'kN' ? 'SI' : 'US';
+  const lu = (kgm?.[2] ?? perLen?.[3] ?? text.match(new RegExp(`${NUM}\\s*${LEN}\\b`))?.[2] ?? (system === 'SI' ? 'm' : 'ft')) as LengthUnit;
+  const len = (re: string) => num(text.match(new RegExp(re.replace(/N/g, NUM).replace(/U/g, `\\s*${LEN}\\b`), 'i'))?.[1]);
+  const span = len('N U (?:apart|span)') || len('span (?:of |is |L ?= ?)?N') || 10;
+  // weight per unit length of the cable itself → catenary; a load "along the horizontal" / on a deck → parabola
+  const own = /(?:weight|mass) per unit length|weighs|chain|catenary/i.test(text);
+  const w = kgm ? num(kgm[1]) * 9.81 : perLen ? num(perLen[1]) : 0;
+  const sag = len('sag (?:of |is |h ?= ?)?N') || len('h ?= ?N');
+  const T = num(text.match(new RegExp(`maximum tension[^\\d]{0,30}${NUM}`, 'i'))?.[1]);
+  const cableLen = len('N-?U-?long') || len('length of N');
+  const H = num(text.match(new RegExp(`horizontal (?:towing )?(?:force|tension)[^\\d]{0,12}${NUM}`, 'i'))?.[1]);
+  const given: CableGiven = sag ? { kind: 'sag', h: sag } : cableLen ? { kind: 'length', s: cableLen } : T ? { kind: 'Tmax', T } : H ? { kind: 'H', H } : { kind: 'sag', h: span / 10 };
+  return {
+    kind: 'cable',
+    title: 'Cable',
+    text: raw.trim(),
+    units: { system, force: fu, length: lu },
+    A: { label: 'A', x: 0, y: 0 },
+    B: { label: 'B', x: span, y: 0 },
+    points: [],
+    w1: own ? 0 : w,
+    w2: own ? 0 : w,
+    w0: own ? w : 0,
+    given,
+  };
+}
+
 export function localParse(raw: string): ParseResult {
   const text = raw.replace(/\s+/g, ' ');
   const lower = text.toLowerCase();
+  // a hanging cable (Hibbeler 7.4), not a cable that holds a beam or a particle
+  if (/\b(?:cable|chain)\b/.test(lower) && /\bsag|catenary|per unit length|lowest point|each segment|suspension|(?:kg|lb|n)\s*\/\s*(?:m|ft)\b/.test(lower) && !/\b(?:beam|boom|bar|rod|lever|shaft)\b/.test(lower))
+    return { ok: false, comingSoon: true, reason: 'Cable problems', truss: cableFromText(raw) };
   for (const [word, what] of [
     ['truss', 'Truss problems'],
     ['frame', 'Frame problems'],

@@ -6,7 +6,7 @@ export function ComingSoon({ reason, onBack, onTruss }: { reason: string; onBack
         <strong>{reason}</strong>
       </p>
       <p>This problem type is not in the prototype yet.</p>
-      <p className="muted">This version solves statically determinate beams (simply supported, overhanging, cantilever) and plane trusses entered by hand.</p>
+      <p className="muted">This version solves statically determinate beams (simply supported, overhanging, cantilever) plane trusses and hanging cables entered by hand.</p>
       {onTruss && (
         <button className="primary" onClick={onTruss}>
           Enter the truss by hand
