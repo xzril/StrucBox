@@ -2,13 +2,14 @@ import { Html, Line, OrbitControls } from '@react-three/drei';
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { fmt, rotWord } from '../lib/format';
+import { fmt, polyText, rotWord } from '../lib/format';
 import type { Palette } from '../lib/theme';
 import { bendScale } from '../lib/bend';
 import { unitStr } from '../lib/units';
 import { momentAboutPoint, pointAt, valueAt, type Solution } from '../solver/solve';
-import { totalDownward } from '../solver/loads';
-import type { Load, Problem } from '../solver/types';
+import { intensity, totalDownward } from '../solver/loads';
+import { evaluate } from '../solver/poly';
+import type { DistLoad, Load, Problem } from '../solver/types';
 
 const BEAM_W = 10; // world length of the beam
 const H = 0.36; // beam depth
@@ -55,7 +56,8 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
     const len = l.x2 - l.x1;
     if (drag.mode === 'move') {
       const x1 = clamp(x, 0, L - len);
-      if (x1 !== l.x1) onMoveLoad({ ...l, x1, x2: round(x1 + len, step) });
+      // a curved load's formula moves with it
+      if (x1 !== l.x1) onMoveLoad({ ...l, x1, x2: round(x1 + len, step), ...(l.poly ? { x0: (l.x0 ?? 0) + x1 - l.x1 } : {}) });
     } else if (drag.mode === 'start') {
       const x1 = Math.min(x, l.x2 - step);
       if (x1 !== l.x1) onMoveLoad({ ...l, x1 });
@@ -76,7 +78,8 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
   // supports, loads and points can sit on rigid arms off the beam axis (an L-shaped member, a bracket)
   const arms = [...p.supports, ...p.loads.filter((l) => l.kind === 'point')].filter((a) => Math.abs(a.y ?? 0) > 1e-9) as { x: number; y: number }[];
   const reach = Math.max(0, ...[...arms, ...p.points].map((a) => Math.abs(a.y ?? 0) * S));
-  const maxW = Math.max(1e-9, ...p.loads.map((l) => (l.kind === 'dist' ? Math.max(Math.abs(l.w1), Math.abs(l.w2)) : 0)));
+  const wAt = (l: DistLoad, x: number) => evaluate(intensity(l), x - l.x1);
+  const maxW = Math.max(1e-9, ...p.loads.flatMap((l) => (l.kind === 'dist' ? Array.from({ length: 9 }, (_, i) => Math.abs(wAt(l, l.x1 + ((l.x2 - l.x1) * i) / 8))) : [0])));
   const top = (x: number) => H / 2 + dy(x);
   const bottom = (x: number) => -H / 2 + dy(x);
   const Fu = unitStr.force(u);
@@ -191,7 +194,7 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
             );
           }
           const n = Math.max(2, Math.round(((l.x2 - l.x1) * S) / 0.45) + 1);
-          const hAt = (x: number) => 0.25 + 1.2 * (Math.abs(l.w1 + ((l.w2 - l.w1) * (x - l.x1)) / (l.x2 - l.x1)) / maxW);
+          const hAt = (x: number) => 0.25 + 1.2 * (Math.abs(wAt(l, x)) / maxW);
           const xs = Array.from({ length: n }, (_, i) => l.x1 + ((l.x2 - l.x1) * i) / (n - 1));
           return (
             <group key={l.id}>
@@ -222,7 +225,7 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
                 );
               })}
               <Html position={[wx((l.x1 + l.x2) / 2), top((l.x1 + l.x2) / 2) + 1.75, 0]} center className="label load-label">
-                {l.w1 === l.w2 ? `${fmt(l.w1)} ${unitStr.dist(u)}` : `${fmt(l.w1)} → ${fmt(l.w2)} ${unitStr.dist(u)}`}
+                {l.poly ? `w = ${polyText(l)} ${unitStr.dist(u)}` : l.w1 === l.w2 ? `${fmt(l.w1)} ${unitStr.dist(u)}` : `${fmt(l.w1)} → ${fmt(l.w2)} ${unitStr.dist(u)}`}
               </Html>
             </group>
           );

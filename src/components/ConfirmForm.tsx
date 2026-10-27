@@ -1,6 +1,6 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { newId } from '../input/parse';
-import { fmt } from '../lib/format';
+import { fmt, parsePoly, polyText } from '../lib/format';
 import { E_UNITS, FORCE_UNITS, I_UNITS, I_UNIT_LABEL, LENGTH_UNITS, defaultUnits, unitStr } from '../lib/units';
 import type { Load, PointLoad, Problem, Support } from '../solver/types';
 import { validate } from '../solver/validate';
@@ -17,6 +17,21 @@ const num = (v: string) => (v === '' || v === '-' ? 0 : Number(v));
 
 function Num({ value, onChange, step = 'any' }: { value: number; onChange: (n: number) => void; step?: string }) {
   return <input type="number" step={step} value={Number.isFinite(value) ? value : ''} onChange={(e) => onChange(num(e.target.value))} />;
+}
+
+/** A polynomial typed as text; keeps the typed text while it does not parse yet. */
+function PolyInput({ value, onChange }: { value: number[]; onChange: (p: number[]) => void }) {
+  const [text, setText] = useState(polyText({ poly: value }).replace(/−/g, '-').replace(/²/g, '^2').replace(/³/g, '^3'));
+  return (
+    <input
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        const p = parsePoly(e.target.value);
+        if (p) onChange(p);
+      }}
+    />
+  );
 }
 
 export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoon }: Props) {
@@ -36,7 +51,7 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
     setLoad(i, { P: clean(-F * sn), Px: clean(F * c) });
   };
 
-  const loadType = (l: Load) => (l.kind === 'dist' ? (l.w1 === l.w2 ? 'udl' : 'linear') : l.kind);
+  const loadType = (l: Load) => (l.kind === 'dist' ? (l.poly ? 'curved' : l.w1 === l.w2 ? 'udl' : 'linear') : l.kind);
   const changeLoadType = (i: number, t: string) => {
     const l = p.loads[i];
     const x = l.kind === 'dist' ? l.x1 : l.x;
@@ -46,7 +61,9 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
         ? { ...base, kind: 'point', x, P: 10 }
         : t === 'moment'
           ? { ...base, kind: 'moment', x, M: 10, dir: 'cw' }
-          : { ...base, kind: 'dist', x1: 0, x2: p.length, w1: t === 'udl' ? 5 : 0, w2: 5 };
+          : t === 'curved'
+            ? { ...base, kind: 'dist', x1: 0, x2: p.length, w1: 0, w2: p.length ** 2, poly: [0, 0, 1] }
+            : { ...base, kind: 'dist', x1: 0, x2: p.length, w1: t === 'udl' ? 5 : 0, w2: 5 };
     set({ loads: p.loads.map((m, j) => (j === i ? next : m)) });
   };
 
@@ -160,6 +177,7 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
                     <option value="point">Point load</option>
                     <option value="udl">Uniform (UDL)</option>
                     <option value="linear">Triangular / linear</option>
+                    <option value="curved">Curved, w = f(x)</option>
                     <option value="moment">Applied moment</option>
                   </select>
                 </td>
@@ -202,7 +220,16 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
                   )}
                   {l.kind === 'dist' && (
                     <>
-                      {l.w1 === l.w2 && loadType(l) === 'udl' ? (
+                      {l.poly ? (
+                        <>
+                          <label title="A polynomial in x, e.g. 2x^2 - 8x + 18. Downward positive.">
+                            w = <PolyInput value={l.poly} onChange={(poly) => setLoad(i, { poly })} />
+                          </label>
+                          <label title="Where the formula's x = 0 is, measured along the beam from its left end.">
+                            x = 0 at <Num value={l.x0 ?? 0} onChange={(x0) => setLoad(i, { x0 })} />
+                          </label>
+                        </>
+                      ) : l.w1 === l.w2 && loadType(l) === 'udl' ? (
                         <label>
                           w ({unitStr.dist(u)}, + down) <Num value={l.w1} onChange={(w) => setLoad(i, { w1: w, w2: w })} />
                         </label>

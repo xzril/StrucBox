@@ -17,6 +17,11 @@ export function inclined(x: number, F: number, dx: number, dy: number, y?: numbe
 export function dist(x1: number, x2: number, w1: number, w2 = w1): Load {
   return { id: id(), kind: 'dist', x1, x2, w1, w2 };
 }
+/** w = poly[0] + poly[1] (x - x0) + ... */
+export function curved(x1: number, x2: number, poly: number[], x0?: number): Load {
+  const w = (x: number) => poly.reduce((s, c, k) => s + c * (x - (x0 ?? 0)) ** k, 0);
+  return { id: id(), kind: 'dist', x1, x2, w1: w(x1), w2: w(x2), poly, ...(x0 ? { x0 } : {}) };
+}
 export function moment(x: number, M: number, dir: 'cw' | 'ccw'): Load {
   return { id: id(), kind: 'moment', x, M, dir };
 }

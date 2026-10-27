@@ -1,15 +1,20 @@
+import { add, evaluate, integrate, mul, scale, shiftedPow, type Poly } from './poly';
 import type { DistLoad, Load } from './types';
 
-/** Resultant of a linear distributed load: W (downward) and first moment about x = 0. */
+/** Intensity w as a polynomial in t = x - x1 (downward positive). */
+export function intensity(l: DistLoad): Poly {
+  if (!l.poly) return [l.w1, (l.w2 - l.w1) / (l.x2 - l.x1)];
+  // x - x0 = t + (x1 - x0)
+  return l.poly.reduce<Poly>((w, c, k) => add(w, scale(shiftedPow(l.x1 - (l.x0 ?? 0), k), c)), [0]);
+}
+
+/** Resultant of a distributed load: W (downward) and first moment about x = 0. */
 export function distResultant(l: DistLoad): { W: number; first: number; xc: number } {
-  const a = l.x1;
   const len = l.x2 - l.x1;
-  // split into a uniform part (w1) and a triangle (w2 - w1) rising to x2
-  const Wu = l.w1 * len;
-  const Wt = ((l.w2 - l.w1) * len) / 2;
-  const first = Wu * (a + len / 2) + Wt * (a + (2 * len) / 3);
-  const W = Wu + Wt;
-  return { W, first, xc: W !== 0 ? first / W : a + len / 2 };
+  const w = intensity(l);
+  const W = evaluate(integrate(w), len);
+  const first = l.x1 * W + evaluate(integrate(mul([0, 1], w)), len);
+  return { W, first, xc: W !== 0 ? first / W : l.x1 + len / 2 };
 }
 
 /** Total downward force of all loads. */

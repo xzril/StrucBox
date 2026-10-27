@@ -47,7 +47,7 @@ const PROBLEM_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['kind', 'x', 'P', 'dirX', 'dirY', 'y', 'x1', 'x2', 'w1', 'w2', 'M', 'dir', 'label'],
+        required: ['kind', 'x', 'P', 'dirX', 'dirY', 'y', 'x1', 'x2', 'w1', 'w2', 'poly', 'x0', 'M', 'dir', 'label'],
         properties: {
           kind: { type: 'string', enum: ['point', 'dist', 'moment'] },
           x: { type: 'number', description: 'point or moment position; 0 for dist' },
@@ -59,6 +59,8 @@ const PROBLEM_SCHEMA = {
           x2: { type: 'number' },
           w1: { type: 'number', description: 'intensity at x1, positive downward' },
           w2: { type: 'number', description: 'intensity at x2 (equal to w1 for a UDL)' },
+          poly: { type: 'array', items: { type: 'number' }, description: 'curved load given by a formula only: coefficients [c0, c1, c2, ...] of w = c0 + c1 x + c2 x² + ... (downward positive), x measured from x0; [] for uniform or linear loads' },
+          x0: { type: 'number', description: "where the formula's x = 0 lies, in beam x; 0 otherwise" },
           M: { type: 'number', description: 'applied moment magnitude' },
           dir: { type: 'string', enum: ['cw', 'ccw'] },
           label: { type: 'string' },

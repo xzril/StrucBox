@@ -2,6 +2,7 @@
 // the local path is a simple keyword/number reader used offline. Either way the
 // user confirms every value before the model is built (D7).
 
+import { parsePoly } from '../lib/format';
 import type { ForceUnit, LengthUnit, Load, Problem, Support } from '../solver/types';
 
 let n = 0;
@@ -58,7 +59,7 @@ export function fromAi(j: any, text: string): ParseResult {
       return { id: newId(), kind: 'point', x: l.x, P: -k * dy, Px: k * dx || undefined, y: l.y || undefined, label: l.label || undefined };
     }
     if (l.kind === 'moment') return { id: newId(), kind: 'moment', x: l.x, M: l.M, dir: l.dir, label: l.label || undefined };
-    return { id: newId(), kind: 'dist', x1: l.x1, x2: l.x2, w1: l.w1, w2: l.w2, label: l.label || undefined };
+    return { id: newId(), kind: 'dist', x1: l.x1, x2: l.x2, w1: l.w1, w2: l.w2, ...(l.poly?.length ? { poly: l.poly, x0: l.x0 || undefined } : {}), label: l.label || undefined };
   });
   const supports: Support[] = (j.supports ?? []).map((s: any) => ({ id: newId(), type: s.type, x: s.x, y: s.y || undefined, angle: s.type === 'roller' && s.angle && s.angle !== 90 ? s.angle : undefined, label: s.label || '?' }));
   return {
@@ -100,16 +101,23 @@ export function localParse(raw: string): ParseResult {
     ['friction', 'Incline and friction problems'],
     ['pulley', 'Pulley and cable problems'],
     ['cable', 'Cable problems'],
+    ['cord', 'Cable problems'],
     ['arch', 'Arch problems'],
   ] as const)
-    if (new RegExp(`\\b${word}`).test(lower)) return { ok: false, comingSoon: true, reason: what };
+    // a beam held by a cable or loaded through a pulley is still a beam (the cable is an inclined roller)
+    if (new RegExp(`\\b${word}`).test(lower) && !(/cable|cord|pulley/.test(word) && /\b(?:beam|boom|bar|rod|lever|shaft)\b/.test(lower)))
+      return { ok: false, comingSoon: true, reason: what };
 
   const p = blankProblem();
   p.text = raw.trim();
   p.title = 'Beam problem';
   p.loads = [];
 
-  const dist = [...text.matchAll(new RegExp(`${NUM}\\s*${FORCE}\\s*/\\s*${LEN}`, 'gi'))];
+  // a curved load given by its formula: "w = (2x^2 - 8x + 18) lb/ft"; its constant term is not a separate load
+  const curve = text.match(/\bw\s*=\s*\(?\s*([-−\d.\sx^²³+*]*x[-−\d.\sx^²³+*]*)\)?/i);
+  const poly = curve && parsePoly(curve[1]);
+  const inCurve = (m: RegExpMatchArray) => !!poly && m.index! >= curve!.index! && m.index! < curve!.index! + curve![0].length;
+  const dist = [...text.matchAll(new RegExp(`${NUM}\\s*${FORCE}\\s*/\\s*${LEN}`, 'gi'))].filter((m) => !inCurve(m));
   const moments = [...text.matchAll(new RegExp(`${NUM}\\s*${FORCE}\\s*[·.\\-•]?\\s*${LEN}\\b`, 'gi'))].filter(
     (m) => !dist.some((d) => d.index === m.index),
   );
@@ -169,6 +177,9 @@ export function localParse(raw: string): ParseResult {
     p.loads.forEach((l) => {
       if (l.kind === 'dist') l.w1 = 0;
     });
+  if (poly) {
+    p.loads.push({ id: newId(), kind: 'dist', x1: 0, x2: span, w1: poly[0], w2: poly.reduce((s, c, k) => s + c * span ** k, 0), poly });
+  }
   if (!p.loads.length) p.loads.push({ id: newId(), kind: 'point', x: span / 2, P: 10 });
 
   const letters = [...text.matchAll(/\b(?:at|point|support)\s+([A-Z])\b/g)].map((m) => m[1]);

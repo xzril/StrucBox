@@ -109,7 +109,9 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
     const { W, xc } = distResultant(l);
     const len = l.x2 - l.x1;
     fbd.push(
-      l.w1 === l.w2
+      l.poly
+        ? `W = \\int_{${fmt(l.x1)}}^{${fmt(l.x2)}} w\\,dx = ${q(W, F)},\\quad \\bar{x} = \\dfrac{\\int x\\,w\\,dx}{W} = ${q(xc, u.length)}\\quad (w = ${texPoly(l.poly, (l.x0 ?? 0) ? `(x - ${fmt(l.x0!)})` : 'x')})`
+        : l.w1 === l.w2
         ? `W = w L = ${fmt(l.w1)}(${fmt(len)}) = ${q(W, F)},\\quad \\bar{x} = ${q(xc, u.length)}`
         : `W = \\tfrac{1}{2}(w_1 + w_2) L = \\tfrac{1}{2}(${fmt(l.w1)} + ${fmt(l.w2)})(${fmt(len)}) = ${q(W, F)},\\quad \\bar{x} = ${q(xc, u.length)}`,
     );

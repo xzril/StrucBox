@@ -31,6 +31,8 @@ export interface DistLoad {
   x2: number;
   w1: number; // intensity at x1, positive = downward
   w2: number; // intensity at x2
+  poly?: number[]; // a curved load, w = poly[0] + poly[1] (x - x0) + poly[2] (x - x0)² + ...; overrides w1, w2 (kept as its end values)
+  x0?: number; // where the poly's x is measured from, in beam x; 0 if omitted
   label?: string;
 }
 

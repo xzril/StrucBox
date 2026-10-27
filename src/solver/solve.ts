@@ -1,4 +1,4 @@
-import { distResultant, loadsMomentAbout, totalDownward, totalRight } from './loads';
+import { distResultant, intensity, loadsMomentAbout, totalDownward, totalRight } from './loads';
 import { add, evaluate, derivative, integrate, rootsIn, scale, shiftedPow, type Poly } from './poly';
 import type { BeamKind, Problem } from './types';
 import { validate } from './validate';
@@ -106,10 +106,11 @@ export function solve(p: Problem): SolveOutcome {
           V = add(V, [-W]);
           M = add(M, [-(W * a - first), -W]);
         } else if (l.x1 <= a + tol && b <= l.x2 + tol) {
-          const k = (l.w2 - l.w1) / (l.x2 - l.x1);
-          const s0 = a - l.x1;
-          V = add(V, scale(add(scale(shiftedPow(s0, 1), l.w1), scale(shiftedPow(s0, 2), k / 2)), -1));
-          M = add(M, scale(add(scale(shiftedPow(s0, 2), l.w1 / 2), scale(shiftedPow(s0, 3), k / 6)), -1));
+          // V -= ∫w, M -= ∬w from x1 to the cut, rewritten in the segment's own t = x - a
+          const at = (p: Poly) => p.reduce<Poly>((acc, c, k) => add(acc, scale(shiftedPow(a - l.x1, k), c)), [0]);
+          const W1 = integrate(intensity(l));
+          V = add(V, scale(at(W1), -1));
+          M = add(M, scale(at(integrate(W1)), -1));
         }
       }
     }
