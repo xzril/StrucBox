@@ -17,7 +17,7 @@ describe('PRD worked example', () => {
     close(s.reactions[0].Ry, 450);
     close(s.reactions[1].Ry, 150);
     close(momentAboutPoint(p, 0), -600); // 600 N·m clockwise
-    close(momentAboutPoint(p, 0, s.reactions), 0); // equilibrium
+    close(momentAboutPoint(p, 0, 0, s.reactions), 0); // equilibrium
   });
   it('dragging the load to x = 3 m', () => {
     const p = workedExample();

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyDrawing, readDrawing } from './drawing';
 import { readPng } from './fixtures/png';
 import { localParse } from './parse';
+import { momentAboutPoint, solve } from '../solver/solve';
 
 describe('reading the beam drawing', () => {
   it("owner's hand-lettered beam: 4 × 2 m, 50 kN ↓ at 2, 100 kN ↓ at 4, 20 kN ↑ at 6", () => {
@@ -86,5 +87,39 @@ describe('reading the beam drawing', () => {
         { kind: 'dist', x1: 1, x2: 3, w1: 0, w2: 150 },
       ],
     });
+  });
+});
+
+describe('inclined forces and L-shaped members in the drawing', () => {
+  // from the photo alone (the text only says what is asked), the way the app reads a textbook figure offline
+  const solveFrom = (img: string, text: string) => {
+    const r = localParse(text);
+    if (!r.ok) throw new Error();
+    const p = applyDrawing(r.problem, readDrawing(readPng(img)));
+    const s = solve(p);
+    if (!s.ok) throw new Error(s.reason);
+    return { p, s: s.solution };
+  };
+
+  it('slanted arrow with a 3-4-5 triangle into a wall (tilted photo): 250 N, 2 m from the free end of 6 m', () => {
+    const { p } = solveFrom('src/input/fixtures/slanted-wall-photo.png', 'Determine the moment of the force about point O.');
+    expect(p.supports.map((s) => [s.label, s.type, s.x])).toEqual([['A', 'free', 0], ['O', 'fixed', 6]]);
+    expect(p.loads.map(({ id, ...l }) => l)).toEqual([{ kind: 'point', x: 2, P: 200, Px: 150 }]);
+    expect(p.asked.momentAbout).toEqual(['O']);
+    expect(momentAboutPoint(p, 6)).toBeCloseTo(800); // 200 N × 4 m, counter-clockwise; the 150 N passes through O
+  });
+
+  it('L-shaped member hung at O: 300 N pushing up the slope at the free end, arm 1.5 m', () => {
+    const { p } = solveFrom('src/input/fixtures/l-member.png', 'Determine the moment of the force about point O.');
+    expect(p.length).toBe(3);
+    expect(p.supports.map((s) => [s.label, s.type, s.x, s.y])).toEqual([['A', 'free', 0, undefined], ['O', 'fixed', 3, 1.5]]);
+    expect(p.loads.map(({ id, ...l }) => l)).toEqual([{ kind: 'point', x: 0, P: -180, Px: 240 }]);
+    expect(momentAboutPoint(p, 3, 1.5)).toBeCloseTo(-180); // -180(3) + 240(1.5): 180 N·m clockwise
+  });
+
+  it('pin and roller with a 5 kN force pushing down and left on a 3-4-5 slope', () => {
+    const { s } = solveFrom('src/input/fixtures/slanted-simple.png', 'Determine the reactions at the supports.');
+    const [A, B] = s.reactions;
+    expect([A.Rx, A.Ry, B.Ry].map((v) => +v.toFixed(3))).toEqual([3, 2.667, 1.333]); // ΣM_A: 6 B_y = 4(2)
   });
 });

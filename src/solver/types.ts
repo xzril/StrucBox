@@ -9,13 +9,17 @@ export interface Support {
   type: SupportType;
   x: number;
   label: string; // e.g. "O", "A", "B"
+  y?: number; // the support sits on a rigid arm this high above the beam axis (an L-shaped member); 0 if omitted
+  angle?: number; // roller only: direction of its reaction in degrees, counter-clockwise from +x (a rocker, a roller on an incline, a cable or link); 90 (straight up) if omitted
 }
 
 export interface PointLoad {
   id: string;
   kind: 'point';
   x: number;
-  P: number; // magnitude, positive = downward
+  P: number; // vertical component, positive = downward
+  Px?: number; // horizontal component, positive = to the right (an inclined force); 0 if omitted
+  y?: number; // point of application this high above the beam axis (a bracket or arm); 0 if omitted
   label?: string;
 }
 
@@ -27,6 +31,8 @@ export interface DistLoad {
   x2: number;
   w1: number; // intensity at x1, positive = downward
   w2: number; // intensity at x2
+  poly?: number[]; // a curved load, w = poly[0] + poly[1] (x - x0) + poly[2] (x - x0)² + ...; overrides w1, w2 (kept as its end values)
+  x0?: number; // where the poly's x is measured from, in beam x; 0 if omitted
   label?: string;
 }
 
@@ -63,11 +69,13 @@ export interface Stiffness {
 export interface NamedPoint {
   label: string;
   x: number;
+  y?: number; // height above the beam axis, e.g. a point O off the beam; 0 if omitted
 }
 
 export interface Asked {
   reactions: boolean;
   momentAbout: string[]; // point labels, e.g. ["O"]
+  resultant?: boolean; // the single resultant force equivalent to the loads, and where it acts
   internalAt?: string[]; // labels where the internal shear and moment are asked ("V and M at C")
   shear: boolean; // SFD
   moment: boolean; // BMD

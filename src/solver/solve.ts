@@ -1,4 +1,4 @@
-import { distResultant, loadsMomentAbout, totalDownward } from './loads';
+import { distResultant, intensity, loadsMomentAbout, totalDownward, totalRight } from './loads';
 import { add, evaluate, derivative, integrate, rootsIn, scale, shiftedPow, type Poly } from './poly';
 import type { BeamKind, Problem } from './types';
 import { validate } from './validate';
@@ -7,10 +7,13 @@ export interface Reaction {
   supportId: string;
   label: string;
   x: number;
+  y: number; // height of the support above the beam axis (0 unless it sits on an arm)
   type: 'pin' | 'roller' | 'fixed';
   Ry: number; // up positive
-  Rx: number; // always 0 for transverse loads
+  Rx: number; // right positive; a roller's is 0 unless it is inclined
   M?: number; // fixed-end moment, counter-clockwise positive
+  angle?: number; // inclined roller: its reaction acts along this direction (degrees from +x), size R
+  R?: number;
 }
 
 /** One segment between breakpoints. Polys are in t = x - a. */
@@ -18,6 +21,7 @@ export interface Segment {
   a: number;
   b: number;
   V: Poly; // shear: sum of upward forces left of the cut
+  N: Poly; // normal force, tension positive (constant: only point loads act along the beam)
   M: Poly; // bending moment, sagging positive
   EIslope: Poly; // EI * dy/dx
   EIy: Poly; // EI * y (y up positive)
@@ -50,17 +54,19 @@ export function solve(p: Problem): SolveOutcome {
   if (v.kind === 'simple') {
     const A = v.primary;
     const B = v.secondary!;
-    // ΣM_A = 0: R_B (x_B - x_A) + ΣM_loads,A = 0
-    const RB = -loadsMomentAbout(p.loads, A.x) / (B.x - A.x);
-    const RA = totalDownward(p.loads) - RB;
-    reactions.push({ supportId: A.id, label: A.label, x: A.x, type: 'pin', Ry: RA, Rx: 0 });
-    reactions.push({ supportId: B.id, label: B.label, x: B.x, type: 'roller', Ry: RB, Rx: 0 });
+    // ΣM_A = 0: R_B along (cos θ, sin θ) at B, moment R_B (sin θ Δx - cos θ Δy), plus ΣM_loads,A = 0
+    const th = ((B.angle ?? 90) * Math.PI) / 180;
+    const [c, sn] = B.angle === undefined ? [0, 1] : [Math.cos(th), Math.sin(th)];
+    const R = -loadsMomentAbout(p.loads, A.x, A.y) / (sn * (B.x - A.x) - c * ((B.y ?? 0) - (A.y ?? 0)));
+    const [RBx, RBy] = [R * c, R * sn];
+    reactions.push({ supportId: A.id, label: A.label, x: A.x, y: A.y ?? 0, type: 'pin', Ry: totalDownward(p.loads) - RBy, Rx: -totalRight(p.loads) - RBx });
+    reactions.push({ supportId: B.id, label: B.label, x: B.x, y: B.y ?? 0, type: 'roller', Ry: RBy, Rx: RBx, ...(B.angle === undefined ? {} : { angle: B.angle, R }) });
     reactions.sort((r1, r2) => r1.x - r2.x);
   } else {
     const F = v.primary;
     const Ry = totalDownward(p.loads);
-    const M = -loadsMomentAbout(p.loads, F.x); // ΣM_F = 0
-    reactions.push({ supportId: F.id, label: F.label, x: F.x, type: 'fixed', Ry, Rx: 0, M });
+    const M = -loadsMomentAbout(p.loads, F.x, F.y); // ΣM_F = 0
+    reactions.push({ supportId: F.id, label: F.label, x: F.x, y: F.y ?? 0, type: 'fixed', Ry, Rx: -totalRight(p.loads), M });
   }
 
   // breakpoints
@@ -78,18 +84,21 @@ export function solve(p: Problem): SolveOutcome {
     const b = breakpoints[i + 1];
     let V: Poly = [0];
     let M: Poly = [0];
-    const upForce = (F: number, xi: number) => {
-      V = add(V, [F]);
-      M = add(M, [F * (a - xi), F]);
+    let N = 0;
+    // a force left of the cut, (Fx right, Fy up) acting yi above the axis
+    const force = (Fx: number, Fy: number, xi: number, yi: number) => {
+      V = add(V, [Fy]);
+      M = add(M, [Fy * (a - xi) + Fx * yi, Fy]);
+      N -= Fx;
     };
     for (const r of reactions) {
       if (r.x <= a + tol) {
-        upForce(r.Ry, r.x);
+        force(r.Rx, r.Ry, r.x, r.y);
         if (r.M) M = add(M, [-r.M]);
       }
     }
     for (const l of p.loads) {
-      if (l.kind === 'point' && l.x <= a + tol) upForce(-l.P, l.x);
+      if (l.kind === 'point' && l.x <= a + tol) force(l.Px ?? 0, -l.P, l.x, l.y ?? 0);
       else if (l.kind === 'moment' && l.x <= a + tol) M = add(M, [l.dir === 'ccw' ? -l.M : l.M]);
       else if (l.kind === 'dist') {
         if (l.x2 <= a + tol) {
@@ -97,14 +106,15 @@ export function solve(p: Problem): SolveOutcome {
           V = add(V, [-W]);
           M = add(M, [-(W * a - first), -W]);
         } else if (l.x1 <= a + tol && b <= l.x2 + tol) {
-          const k = (l.w2 - l.w1) / (l.x2 - l.x1);
-          const s0 = a - l.x1;
-          V = add(V, scale(add(scale(shiftedPow(s0, 1), l.w1), scale(shiftedPow(s0, 2), k / 2)), -1));
-          M = add(M, scale(add(scale(shiftedPow(s0, 2), l.w1 / 2), scale(shiftedPow(s0, 3), k / 6)), -1));
+          // V -= ∫w, M -= ∬w from x1 to the cut, rewritten in the segment's own t = x - a
+          const at = (p: Poly) => p.reduce<Poly>((acc, c, k) => add(acc, scale(shiftedPow(a - l.x1, k), c)), [0]);
+          const W1 = integrate(intensity(l));
+          V = add(V, scale(at(W1), -1));
+          M = add(M, scale(at(integrate(W1)), -1));
         }
       }
     }
-    segments.push({ a, b, V: trim(V), M: trim(M), EIslope: [], EIy: [] });
+    segments.push({ a, b, V: trim(V), N: trim([N]), M: trim(M), EIslope: [], EIy: [] });
   }
 
   // deflection: EI y'' = M, integrate twice from x = 0, then apply support conditions
@@ -151,7 +161,7 @@ export function solve(p: Problem): SolveOutcome {
   };
 }
 
-type Field = 'V' | 'M' | 'EIslope' | 'EIy';
+type Field = 'V' | 'N' | 'M' | 'EIslope' | 'EIy';
 
 /** Value at x. At a breakpoint, 'left' takes the limit from the left, 'right' from the right. */
 export function valueAt(segments: Segment[], x: number, f: Field, side: 'left' | 'right' = 'right'): number {
@@ -184,17 +194,17 @@ function extremes(segments: Segment[], f: 'V' | 'M' | 'EIy') {
   return { max: clean(max), min: clean(min) };
 }
 
-/** Moment of the applied loads about a point, counter-clockwise positive. */
-export function momentAboutPoint(p: Problem, x: number, withReactions?: Reaction[]): number {
-  let M = loadsMomentAbout(p.loads, x);
-  for (const r of withReactions ?? []) M += r.Ry * (r.x - x) + (r.M ?? 0);
+/** Moment of the applied loads about the point (x, y), counter-clockwise positive. */
+export function momentAboutPoint(p: Problem, x: number, y = 0, withReactions?: Reaction[]): number {
+  let M = loadsMomentAbout(p.loads, x, y);
+  for (const r of withReactions ?? []) M += r.Ry * (r.x - x) - r.Rx * (r.y - y) + (r.M ?? 0);
   return M;
 }
 
-export function pointX(p: Problem, label: string): number | undefined {
-  const s = p.supports.find((s) => s.label === label);
-  if (s) return s.x;
-  return p.points.find((q) => q.label === label)?.x;
+/** Where a support or named point sits: x along the beam, y above its axis. */
+export function pointAt(p: Problem, label: string): { x: number; y: number } | undefined {
+  const s = p.supports.find((s) => s.label === label) ?? p.points.find((q) => q.label === label);
+  return s && { x: s.x, y: s.y ?? 0 };
 }
 
 function trim(p: Poly): Poly {

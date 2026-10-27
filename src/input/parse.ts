@@ -2,6 +2,9 @@
 // the local path is a simple keyword/number reader used offline. Either way the
 // user confirms every value before the model is built (D7).
 
+import { parsePoly } from '../lib/format';
+import type { Cable, CableGiven } from '../solver/cable';
+import type { Truss } from '../solver/truss';
 import type { ForceUnit, LengthUnit, Load, Problem, Support } from '../solver/types';
 
 let n = 0;
@@ -44,18 +47,73 @@ export function workedExample(): Problem {
 }
 
 // exact: the text itself placed every load ("x=1.0", "x=[1.5, 2.5]"), so the drawing should not move them
-export type ParseResult = { ok: true; problem: Problem; exact?: boolean } | { ok: false; comingSoon: true; reason: string };
+// a truss or cable is not a beam: it comes back as "not ok" with what was read so far, and goes to its own screen
+export type ParseResult = { ok: true; problem: Problem; exact?: boolean } | { ok: false; comingSoon: true; reason: string; truss?: Truss | Cable };
 
 /** Map the AI's JSON (see server/ai.ts schema) to a Problem. */
 export function fromAi(j: any, text: string): ParseResult {
+  if (j.structure === 'truss' && j.truss) {
+    const t = j.truss;
+    return {
+      ok: false,
+      comingSoon: true,
+      reason: 'Truss problems',
+      truss: {
+        kind: 'truss',
+        title: j.title || 'Truss',
+        text,
+        units: j.units,
+        joints: t.joints ?? [],
+        members: (t.members ?? []).map((m: string) => (m.includes('-') ? m.split('-') : [m[0], m.slice(1)])),
+        supports: (t.supports ?? []).map((s: any) => ({ joint: s.joint, type: s.type, ...(s.type === 'roller' && s.angle && s.angle !== 90 ? { angle: s.angle } : {}) })),
+        // the AI copies the direction as drawn; resolving into components happens here (D24)
+        loads: (t.loads ?? []).map((l: any) => {
+          const [dx, dy] = l.dirX || l.dirY ? [l.dirX, l.dirY] : [0, -1];
+          const k = l.F / Math.hypot(dx, dy);
+          return { id: newId(), joint: l.joint, Fx: k * dx, Fy: k * dy };
+        }),
+        asked: t.askedMembers ?? [],
+      },
+    };
+  }
+  if (j.structure === 'cable' && j.cable?.span) {
+    const k = j.cable;
+    const pts = (k.loads ?? []).map((l: any, i: number) => ({ id: newId(), label: l.label || String.fromCharCode(66 + i), x: l.x, P: l.P }));
+    const given: CableGiven =
+      k.given.kind === 'y' ? { kind: 'y', x: k.given.x, y: k.given.y } : k.given.kind === 'sag' ? { kind: 'sag', h: k.given.value } : k.given.kind === 'Tmax' ? { kind: 'Tmax', T: k.given.value } : k.given.kind === 'H' ? { kind: 'H', H: k.given.value } : { kind: 'length', s: k.given.value };
+    return {
+      ok: false,
+      comingSoon: true,
+      reason: 'Cable problems',
+      truss: {
+        kind: 'cable',
+        title: j.title || 'Cable',
+        text,
+        units: j.units,
+        A: { label: k.labelA || 'A', x: 0, y: 0 },
+        B: { label: k.labelB || 'B', x: k.span, y: k.rise },
+        points: pts,
+        w1: k.w1,
+        w2: k.w2,
+        // the AI copies a mass per length as printed; the weight is worked out here (D24)
+        w0: k.w0IsMass ? k.w0 * 9.81 : k.w0,
+        given,
+      },
+    };
+  }
   if (j.structure !== 'beam')
     return { ok: false, comingSoon: true, reason: j.unsupportedReason || `${String(j.structure).replace(/_/g, ' ')} problems` };
   const loads: Load[] = (j.loads ?? []).map((l: any): Load => {
-    if (l.kind === 'point') return { id: newId(), kind: 'point', x: l.x, P: l.P, label: l.label || undefined };
+    if (l.kind === 'point') {
+      // the AI copies the direction as drawn (slope legs or cos/sin); resolving into components happens here (D24)
+      const [dx, dy] = l.dirX || l.dirY ? [l.dirX ?? 0, l.dirY ?? 0] : [0, -1];
+      const k = l.P / Math.hypot(dx, dy);
+      return { id: newId(), kind: 'point', x: l.x, P: -k * dy, Px: k * dx || undefined, y: l.y || undefined, label: l.label || undefined };
+    }
     if (l.kind === 'moment') return { id: newId(), kind: 'moment', x: l.x, M: l.M, dir: l.dir, label: l.label || undefined };
-    return { id: newId(), kind: 'dist', x1: l.x1, x2: l.x2, w1: l.w1, w2: l.w2, label: l.label || undefined };
+    return { id: newId(), kind: 'dist', x1: l.x1, x2: l.x2, w1: l.w1, w2: l.w2, ...(l.poly?.length ? { poly: l.poly, x0: l.x0 || undefined } : {}), label: l.label || undefined };
   });
-  const supports: Support[] = (j.supports ?? []).map((s: any) => ({ id: newId(), type: s.type, x: s.x, label: s.label || '?' }));
+  const supports: Support[] = (j.supports ?? []).map((s: any) => ({ id: newId(), type: s.type, x: s.x, y: s.y || undefined, angle: s.type === 'roller' && s.angle && s.angle !== 90 ? s.angle : undefined, label: s.label || '?' }));
   return {
     ok: true,
     problem: {
@@ -85,26 +143,92 @@ function forceUnit(s: string): ForceUnit {
 }
 
 /** Offline best-effort reader. Fills what it can; the confirm step fixes the rest. */
+/** Offline, a truss's geometry is entered by hand from the figure; the text still gives the units and the asked members. */
+export function trussFromText(raw: string): Truss {
+  const text = raw.replace(/\s+/g, ' ');
+  const unit = text.match(new RegExp(`${NUM}\\s*${FORCE}\\b`, 'i'))?.[2];
+  const fu = unit ? forceUnit(unit) : 'kN';
+  const system = fu === 'N' || fu === 'kN' ? 'SI' : 'US';
+  // "force in members BC, HC and HG"
+  const list = text.match(/members?\s+((?:[A-Z]{2}\s*(?:,|and|&)?\s*)+)/)?.[1] ?? '';
+  return {
+    kind: 'truss',
+    title: 'Truss',
+    text: raw.trim(),
+    units: { system, force: fu, length: system === 'SI' ? 'm' : 'ft' },
+    joints: [],
+    members: [],
+    supports: [],
+    loads: [],
+    asked: list.match(/[A-Z]{2}/g) ?? [],
+  };
+}
+
+/** Offline cable reader: span, sag, own weight or uniform load, and the given tension or length from the words; the rest from the figure. */
+export function cableFromText(raw: string): Cable {
+  const text = raw.replace(/\s+/g, ' ');
+  const num = (s?: string) => (s ? parseFloat(s.replace(',', '.')) : NaN);
+  const unit = text.match(new RegExp(`${NUM}\\s*${FORCE}\\b`, 'i'))?.[2];
+  const kgm = text.match(new RegExp(`${NUM}\\s*kg\\s*/\\s*${LEN}`, 'i'));
+  const perLen = text.match(new RegExp(`${NUM}\\s*${FORCE}\\s*/\\s*${LEN}`, 'i'));
+  const fu = unit ? forceUnit(unit) : perLen ? forceUnit(perLen[2]) : kgm ? 'N' : 'kN';
+  const system = fu === 'N' || fu === 'kN' ? 'SI' : 'US';
+  const lu = (kgm?.[2] ?? perLen?.[3] ?? text.match(new RegExp(`${NUM}\\s*${LEN}\\b`))?.[2] ?? (system === 'SI' ? 'm' : 'ft')) as LengthUnit;
+  const len = (re: string) => num(text.match(new RegExp(re.replace(/N/g, NUM).replace(/U/g, `\\s*${LEN}\\b`), 'i'))?.[1]);
+  const span = len('N U (?:apart|span)') || len('span (?:of |is |L ?= ?)?N') || 10;
+  // weight per unit length of the cable itself → catenary; a load "along the horizontal" / on a deck → parabola
+  const own = /(?:weight|mass) per unit length|weighs|chain|catenary/i.test(text);
+  const w = kgm ? num(kgm[1]) * 9.81 : perLen ? num(perLen[1]) : 0;
+  const sag = len('sag (?:of |is |h ?= ?)?N') || len('h ?= ?N');
+  const T = num(text.match(new RegExp(`maximum tension[^\\d]{0,30}${NUM}`, 'i'))?.[1]);
+  const cableLen = len('N-?U-?long') || len('length of N');
+  const H = num(text.match(new RegExp(`horizontal (?:towing )?(?:force|tension)[^\\d]{0,12}${NUM}`, 'i'))?.[1]);
+  const given: CableGiven = sag ? { kind: 'sag', h: sag } : cableLen ? { kind: 'length', s: cableLen } : T ? { kind: 'Tmax', T } : H ? { kind: 'H', H } : { kind: 'sag', h: span / 10 };
+  return {
+    kind: 'cable',
+    title: 'Cable',
+    text: raw.trim(),
+    units: { system, force: fu, length: lu },
+    A: { label: 'A', x: 0, y: 0 },
+    B: { label: 'B', x: span, y: 0 },
+    points: [],
+    w1: own ? 0 : w,
+    w2: own ? 0 : w,
+    w0: own ? w : 0,
+    given,
+  };
+}
+
 export function localParse(raw: string): ParseResult {
   const text = raw.replace(/\s+/g, ' ');
   const lower = text.toLowerCase();
+  // a hanging cable (Hibbeler 7.4), not a cable that holds a beam or a particle
+  if (/\b(?:cable|chain)\b/.test(lower) && /\bsag|catenary|per unit length|lowest point|each segment|suspension|(?:kg|lb|n)\s*\/\s*(?:m|ft)\b/.test(lower) && !/\b(?:beam|boom|bar|rod|lever|shaft)\b/.test(lower))
+    return { ok: false, comingSoon: true, reason: 'Cable problems', truss: cableFromText(raw) };
   for (const [word, what] of [
     ['truss', 'Truss problems'],
     ['frame', 'Frame problems'],
-    ['incline', 'Incline and friction problems'],
+    ['incline\\b|inclined plane', 'Incline and friction problems'], // the plane, not an inclined force
     ['friction', 'Incline and friction problems'],
     ['pulley', 'Pulley and cable problems'],
     ['cable', 'Cable problems'],
+    ['cord', 'Cable problems'],
     ['arch', 'Arch problems'],
   ] as const)
-    if (new RegExp(`\\b${word}`).test(lower)) return { ok: false, comingSoon: true, reason: what };
+    // a beam held by a cable or loaded through a pulley is still a beam (the cable is an inclined roller)
+    if (new RegExp(`\\b${word}`).test(lower) && !(/cable|cord|pulley/.test(word) && /\b(?:beam|boom|bar|rod|lever|shaft)\b/.test(lower)))
+      return { ok: false, comingSoon: true, reason: what, ...(word === 'truss' ? { truss: trussFromText(raw) } : {}) };
 
   const p = blankProblem();
   p.text = raw.trim();
   p.title = 'Beam problem';
   p.loads = [];
 
-  const dist = [...text.matchAll(new RegExp(`${NUM}\\s*${FORCE}\\s*/\\s*${LEN}`, 'gi'))];
+  // a curved load given by its formula: "w = (2x^2 - 8x + 18) lb/ft"; its constant term is not a separate load
+  const curve = text.match(/\bw\s*=\s*\(?\s*([-−\d.\sx^²³+*]*x[-−\d.\sx^²³+*]*)\)?/i);
+  const poly = curve && parsePoly(curve[1]);
+  const inCurve = (m: RegExpMatchArray) => !!poly && m.index! >= curve!.index! && m.index! < curve!.index! + curve![0].length;
+  const dist = [...text.matchAll(new RegExp(`${NUM}\\s*${FORCE}\\s*/\\s*${LEN}`, 'gi'))].filter((m) => !inCurve(m));
   const moments = [...text.matchAll(new RegExp(`${NUM}\\s*${FORCE}\\s*[·.\\-•]?\\s*${LEN}\\b`, 'gi'))].filter(
     (m) => !dist.some((d) => d.index === m.index),
   );
@@ -164,6 +288,9 @@ export function localParse(raw: string): ParseResult {
     p.loads.forEach((l) => {
       if (l.kind === 'dist') l.w1 = 0;
     });
+  if (poly) {
+    p.loads.push({ id: newId(), kind: 'dist', x1: 0, x2: span, w1: poly[0], w2: poly.reduce((s, c, k) => s + c * span ** k, 0), poly });
+  }
   if (!p.loads.length) p.loads.push({ id: newId(), kind: 'point', x: span / 2, P: 10 });
 
   const letters = [...text.matchAll(/\b(?:at|point|support)\s+([A-Z])\b/g)].map((m) => m[1]);
@@ -183,7 +310,9 @@ export function localParse(raw: string): ParseResult {
 
   p.asked = emptyAsked();
   p.asked.reactions = /reaction/.test(lower);
-  const about = [...text.matchAll(/moment (?:of [a-z ]{0,30})?about (?:point )?([A-Z])\b/gi)].map((m) => m[1].toUpperCase());
+  p.asked.resultant = /resultant/.test(lower);
+  // "moment of the forces about O"; "resultant force and couple moment at A" is the same thing
+  const about = [...text.matchAll(/(?:moment (?:of [a-z ]{0,30})?about|couple moment (?:acting )?at) (?:point )?([A-Z])\b/gi)].map((m) => m[1].toUpperCase());
   p.asked.momentAbout = about;
   // "the internal shear and moment at C", "shear force and bending moment at point C"
   const internal = [...text.matchAll(/(?:internal|shear|normal force|moment)[a-z ,]{0,60}?\bat (?:points? )?([A-Z])\b(?:\s*and\s*([A-Z])\b)?/gi)]

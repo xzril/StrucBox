@@ -11,7 +11,8 @@ interface Glyph extends Box {
   mask: Uint8Array;
 }
 
-export function readWords(comps: Comp[], mask: Uint8Array, W: number, textH: number, shafts: Shaft[]): Word[] {
+/** digits: read bare numbers only (the sides of a slope triangle), for blobs already known to sit by an inclined arrow. */
+export function readWords(comps: Comp[], mask: Uint8Array, W: number, textH: number, shafts: Shaft[], digits = false): Word[] {
   // an arrowhead straddles its shaft and touches its end; a label above the tail keeps a small gap
   const touch = Math.max(2, 0.12 * textH);
   const nearShaftEnd = (c: Comp) =>
@@ -62,27 +63,27 @@ export function readWords(comps: Comp[], mask: Uint8Array, W: number, textH: num
     if (grp) grp.push(g);
     else groups.push([g]);
   }
-  return groups.flatMap((g) => decodeGroup(g));
+  return groups.flatMap((g) => decodeGroup(g, false, digits));
 }
 
 /** Read a group as one label; if that fails, split it at its widest gap and read the parts. */
-function decodeGroup(gs: Glyph[], part = false): Word[] {
+function decodeGroup(gs: Glyph[], part = false, digits = false): Word[] {
   if (gs.length > 14) return []; // a line of prose, not a label
-  const w = decodeWord(gs);
+  const w = decodeWord(gs, digits);
   if (part && w && w.text.length === 1) return []; // a lone letter must stand alone, not be cut from text
   if (w && w.score > Math.log(0.3)) return [w];
-  const parts = gs.length > 1 ? splitAtGap(gs) : [];
+  const parts = gs.length > 1 ? splitAtGap(gs, digits) : [];
   const better = parts.length > 1 && parts.every((p) => p.score > (w?.score ?? -Infinity));
   return better ? parts : w ? [w] : parts;
 }
-function splitAtGap(gs: Glyph[]): Word[] {
+function splitAtGap(gs: Glyph[], digits: boolean): Word[] {
   let at = 1;
   for (let i = 1; i < gs.length; i++) if (gs[i].x0 - gs[i - 1].x1 > gs[at].x0 - gs[at - 1].x1) at = i;
-  return [...decodeGroup(gs.slice(0, at), true), ...decodeGroup(gs.slice(at), true)];
+  return [...decodeGroup(gs.slice(0, at), true, digits), ...decodeGroup(gs.slice(at), true, digits)];
 }
 
 /** Best reading of a group of glyphs as a number with a unit, or as a single support letter. */
-function decodeWord(raw: Glyph[]): Word | null {
+function decodeWord(raw: Glyph[], digits: boolean): Word | null {
   const H = Math.max(...raw.map((g) => g.y1 - g.y0 + 1));
   // touching characters ("ki", "ft") may each be one blob: try each blob whole and cut, keep the best reading
   let combos: Glyph[][] = [[]];
@@ -92,14 +93,14 @@ function decodeWord(raw: Glyph[]): Word | null {
   }
   let best: Word | null = null;
   for (const gs of combos) {
-    const w = decodeSeq(gs, H);
+    const w = decodeSeq(gs, H, digits);
     if (w && (!best || w.score > best.score)) best = w;
   }
   return best;
 }
 
 const probCache = new WeakMap<Glyph, Float32Array>();
-function decodeSeq(gs: Glyph[], H: number): Word | null {
+function decodeSeq(gs: Glyph[], H: number, digits: boolean): Word | null {
   const base = Math.max(...gs.map((g) => g.y1));
   const box = bbox(gs);
   // per glyph: probabilities over GLYPHS, or a punctuation mark judged by size and height
@@ -135,6 +136,19 @@ function decodeSeq(gs: Glyph[], H: number): Word | null {
     const g = gs[0];
     const solid = g.x1 - g.x0 + 1 > 0.35 * (g.y1 - g.y0 + 1); // not a hatch stroke
     if (typeof probs[0] !== 'string' && solid && l.p > 0.45) consider(l.c === '0' ? 'O' : l.c, Math.log(l.p));
+  }
+  // a bare number of one or two digits: a side of a slope triangle ("3", "4", "5", "12", "13")
+  if (digits) {
+    if (n > 2 || probs.some((pr) => typeof pr === 'string')) return null;
+    let lp = 0;
+    let num = '';
+    for (let i = 0; i < n; i++) {
+      const d = best(i, i === 0 ? '123456789' : '0123456789');
+      num += d.c;
+      lp += Math.log(d.p);
+    }
+    consider(num, lp);
+    return top && (top as Word).score > Math.log(0.12) ? top : null;
   }
   for (const u of UNITS) {
     const nd = n - u.length;

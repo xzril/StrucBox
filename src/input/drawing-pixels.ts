@@ -105,10 +105,9 @@ export function inkMask(img: RGBA): Uint8Array {
   return ink;
 }
 
-export function horizontalLines(ink: Uint8Array, W: number, H: number) {
+export function horizontalLines(ink: Uint8Array, W: number, H: number, min = 0.3 * W) {
   const hmask = new Uint8Array(W * H);
   const rows: { y: number; x0: number; x1: number }[] = [];
-  const min = 0.3 * W;
   for (let y = 0; y < H; y++) {
     let start = -1, gap = 0;
     for (let x = 0; x <= W; x++) {

@@ -2,13 +2,14 @@ import { Html, Line, OrbitControls } from '@react-three/drei';
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { fmt, rotWord } from '../lib/format';
+import { fmt, polyText, rotWord } from '../lib/format';
 import type { Palette } from '../lib/theme';
 import { bendScale } from '../lib/bend';
 import { unitStr } from '../lib/units';
-import { momentAboutPoint, pointX, valueAt, type Solution } from '../solver/solve';
-import { totalDownward } from '../solver/loads';
-import type { Load, Problem } from '../solver/types';
+import { momentAboutPoint, pointAt, valueAt, type Solution } from '../solver/solve';
+import { intensity, totalDownward } from '../solver/loads';
+import { evaluate } from '../solver/poly';
+import type { DistLoad, Load, Problem } from '../solver/types';
 
 const BEAM_W = 10; // world length of the beam
 const H = 0.36; // beam depth
@@ -55,7 +56,8 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
     const len = l.x2 - l.x1;
     if (drag.mode === 'move') {
       const x1 = clamp(x, 0, L - len);
-      if (x1 !== l.x1) onMoveLoad({ ...l, x1, x2: round(x1 + len, step) });
+      // a curved load's formula moves with it
+      if (x1 !== l.x1) onMoveLoad({ ...l, x1, x2: round(x1 + len, step), ...(l.poly ? { x0: (l.x0 ?? 0) + x1 - l.x1 } : {}) });
     } else if (drag.mode === 'start') {
       const x1 = Math.min(x, l.x2 - step);
       if (x1 !== l.x1) onMoveLoad({ ...l, x1 });
@@ -72,8 +74,12 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
     setDrag({ id: l.id, mode, offset: mode === 'move' ? bx(e.point.x) - at : 0 });
   };
 
-  const maxP = Math.max(1e-9, ...p.loads.map((l) => (l.kind === 'point' ? Math.abs(l.P) : 0)));
-  const maxW = Math.max(1e-9, ...p.loads.map((l) => (l.kind === 'dist' ? Math.max(Math.abs(l.w1), Math.abs(l.w2)) : 0)));
+  const maxP = Math.max(1e-9, ...p.loads.map((l) => (l.kind === 'point' ? Math.hypot(l.P, l.Px ?? 0) : 0)));
+  // supports, loads and points can sit on rigid arms off the beam axis (an L-shaped member, a bracket)
+  const arms = [...p.supports, ...p.loads.filter((l) => l.kind === 'point')].filter((a) => Math.abs(a.y ?? 0) > 1e-9) as { x: number; y: number }[];
+  const reach = Math.max(0, ...[...arms, ...p.points].map((a) => Math.abs(a.y ?? 0) * S));
+  const wAt = (l: DistLoad, x: number) => evaluate(intensity(l), x - l.x1);
+  const maxW = Math.max(1e-9, ...p.loads.flatMap((l) => (l.kind === 'dist' ? Array.from({ length: 9 }, (_, i) => Math.abs(wAt(l, l.x1 + ((l.x2 - l.x1) * i) / 8))) : [0])));
   const top = (x: number) => H / 2 + dy(x);
   const bottom = (x: number) => -H / 2 + dy(x);
   const Fu = unitStr.force(u);
@@ -85,8 +91,8 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
         <color attach="background" args={[C.bg]} />
         <ambientLight intensity={0.7} />
         <directionalLight position={[4, 8, 6]} intensity={1.1} />
-        <FitWidth />
-        <OrbitControls ref={controls as never} enabled={!drag} target={[0, -0.2, 0]} />
+        <FitWidth reach={reach} />
+        <OrbitControls ref={controls as never} enabled={!drag} target={[0, -0.2 + reach / 2, 0]} />
         <gridHelper key={C.bg} args={[30, 30, C.grid[0], C.grid[1]]} position={[0, -3.3, 0]} />
 
         <Dimensions
@@ -99,25 +105,77 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
 
         <DeformedBeam bx={bx} dy={dy} color={C.beam} />
 
-        {p.supports.map((sp) => (
-          <group key={sp.id} position={[wx(sp.x), bottom(sp.x), 0]}>
-            <SupportGlyph type={sp.type} atRight={sp.x > L / 2} color={C.support} />
-            <Html position={[sp.x > L / 2 ? 0.55 : -0.55, -0.35, D]} center className="label support-label">
-              {sp.label}
+        {[...new Map(arms.map((a) => [`${a.x},${a.y}`, a])).values()].map((a) => (
+          <group key={`${a.x},${a.y}`} position={[wx(a.x), dy(a.x) + (a.y * S) / 2, 0]}>
+            <mesh>
+              <boxGeometry args={[H, Math.abs(a.y * S) + H, D]} />
+              <meshStandardMaterial color={C.beam} metalness={0.2} roughness={0.6} />
+            </mesh>
+            <Html position={[a.x > L / 2 ? 0.6 : -0.6, 0, D]} center className="label dim-label">
+              {fmt(Math.abs(a.y))} {u.length}
             </Html>
           </group>
         ))}
 
+        {p.supports.map((sp) =>
+          sp.y ? (
+            // on an arm: the symbol hangs from (or stands on) the arm's far end
+            <group key={sp.id} position={[wx(sp.x), dy(sp.x) + sp.y * S + Math.sign(sp.y) * (H / 2), 0]} rotation={[0, 0, sp.y > 0 ? Math.PI : 0]}>
+              {sp.type === 'fixed' ? (
+                <mesh position={[0, -0.15, 0]}>
+                  <boxGeometry args={[1.6, 0.3, 1.2]} />
+                  <meshStandardMaterial color={C.support} />
+                </mesh>
+              ) : (
+                <SupportGlyph type={sp.type} atRight={false} color={C.support} />
+              )}
+              <Html position={[0.55, -0.35, D]} center className="label support-label">
+                {sp.label}
+              </Html>
+            </group>
+          ) : (
+            <group key={sp.id} position={[wx(sp.x), bottom(sp.x), 0]}>
+              {/* an inclined roller (rocker, incline, cable) tilts so its reaction points along its angle */}
+              <group rotation={[0, 0, sp.type === 'roller' && sp.angle !== undefined ? ((sp.angle - 90) * Math.PI) / 180 : 0]}>
+                <SupportGlyph type={sp.type} atRight={sp.x > L / 2} color={C.support} />
+              </group>
+              <Html position={[sp.x > L / 2 ? 0.55 : -0.55, -0.35, D]} center className="label support-label">
+                {sp.label}
+              </Html>
+            </group>
+          ),
+        )}
+
+        {p.points
+          .filter((q) => q.y)
+          .map((q) => (
+            <group key={q.label} position={[wx(q.x), dy(q.x) + q.y! * S, 0]}>
+              <mesh>
+                <sphereGeometry args={[0.1, 16, 16]} />
+                <meshStandardMaterial color={C.support} />
+              </mesh>
+              <Html position={[0.35, 0.3, D]} center className="label support-label">
+                {q.label}
+              </Html>
+            </group>
+          ))}
+
         {p.loads.map((l) => {
           if (l.kind === 'point') {
-            const len = 0.8 + 1.0 * (Math.abs(l.P) / maxP);
+            const F = Math.hypot(l.P, l.Px ?? 0);
+            const len = 0.8 + 1.0 * (F / maxP);
+            // drawn along y, then turned to the force's direction: a downward force ends on the beam, an upward one starts there
+            const down = l.P >= 0;
+            const turn = Math.atan2(-l.P, l.Px ?? 0) + (down ? Math.PI / 2 : -Math.PI / 2);
             return (
-              <group key={l.id} position={[wx(l.x), top(l.x), 0]} onPointerDown={grab(l, 'move')}>
-                <Arrow from={l.P >= 0 ? len : 0} to={l.P >= 0 ? 0 : len} color={C.load} />
-                <HitBox h={len} />
-                <Html position={[0, len + 0.3, 0]} center className="label load-label">
-                  {fmt(Math.abs(l.P))} {Fu}
-                </Html>
+              <group key={l.id} position={[wx(l.x), l.y ? dy(l.x) + l.y * S : top(l.x), 0]} onPointerDown={grab(l, 'move')}>
+                <group rotation={[0, 0, turn]}>
+                  <Arrow from={down ? len : 0} to={down ? 0 : len} color={C.load} />
+                  <HitBox h={len} />
+                  <Html position={[0, len + 0.3, 0]} center className="label load-label">
+                    {fmt(F)} {Fu}
+                  </Html>
+                </group>
               </group>
             );
           }
@@ -136,7 +194,7 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
             );
           }
           const n = Math.max(2, Math.round(((l.x2 - l.x1) * S) / 0.45) + 1);
-          const hAt = (x: number) => 0.25 + 1.2 * (Math.abs(l.w1 + ((l.w2 - l.w1) * (x - l.x1)) / (l.x2 - l.x1)) / maxW);
+          const hAt = (x: number) => 0.25 + 1.2 * (Math.abs(wAt(l, x)) / maxW);
           const xs = Array.from({ length: n }, (_, i) => l.x1 + ((l.x2 - l.x1) * i) / (n - 1));
           return (
             <group key={l.id}>
@@ -167,24 +225,37 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
                 );
               })}
               <Html position={[wx((l.x1 + l.x2) / 2), top((l.x1 + l.x2) / 2) + 1.75, 0]} center className="label load-label">
-                {l.w1 === l.w2 ? `${fmt(l.w1)} ${unitStr.dist(u)}` : `${fmt(l.w1)} → ${fmt(l.w2)} ${unitStr.dist(u)}`}
+                {l.poly ? `w = ${polyText(l)} ${unitStr.dist(u)}` : l.w1 === l.w2 ? `${fmt(l.w1)} ${unitStr.dist(u)}` : `${fmt(l.w1)} → ${fmt(l.w2)} ${unitStr.dist(u)}`}
               </Html>
             </group>
           );
         })}
 
         {s.reactions.map((r) => {
-          const y0 = bottom(r.x) - (r.type === 'fixed' ? 0.15 : 0.62);
+          const y0 = r.y ? dy(r.x) + r.y * S + Math.sign(r.y) * 0.9 : bottom(r.x) - (r.type === 'fixed' ? 0.15 : 0.62);
           const up = r.Ry >= 0;
+          const right = r.Rx >= 0;
           return (
             <group key={r.supportId} position={[wx(r.x), y0, 0.45]}>
+              {Math.abs(r.Rx) > 1e-9 && (
+                // under the vertical reaction, pointing along the beam, clear of a wall
+                <group position={[r.x > L / 2 ? -0.7 : 0.7, -1.5, 0]}>
+                  <group rotation={[0, 0, -Math.PI / 2]}>
+                    <Arrow from={right ? -0.55 : 0.55} to={right ? 0.55 : -0.55} color={C.reaction} />
+                  </group>
+                  <Html position={[0, -0.35, 0]} center className="label reaction-label">
+                    {r.label}
+                    <sub>x</sub> = {showSolution ? `${fmt(Math.abs(r.Rx))} ${Fu} ${right ? '→' : '←'}` : '?'}
+                  </Html>
+                </group>
+              )}
               {Math.abs(r.Ry) > 1e-9 && <Arrow from={up ? -1.1 : 0} to={up ? 0 : -1.1} color={C.reaction} />}
               <Html position={[0.55, -0.7, 0]} center className="label reaction-label">
                 {r.label}
                 <sub>y</sub> = {showSolution ? `${fmt(Math.abs(r.Ry))} ${Fu} ${up ? '↑' : '↓'}` : '?'}
               </Html>
               {r.type === 'fixed' && Math.abs(r.M!) > 1e-9 && (
-                <group position={[0, -y0 + dy(r.x), 0]}>
+                <group position={[0, -y0 + dy(r.x) + r.y * S, 0]}>
                   <MomentArc r={0.85} dir={r.M! > 0 ? 'ccw' : 'cw'} color={C.reaction} />
                   <Html position={[0, 1.25, 0]} center className="label reaction-label">
                     M<sub>{r.label}</sub> = {showSolution ? `${fmt(Math.abs(r.M!))} ${Mu} ${r.M! > 0 ? '↺' : '↻'}` : '?'}
@@ -196,21 +267,32 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
         })}
 
         {p.asked.momentAbout.map((label, k) => {
-          const x = pointX(p, label);
-          if (x === undefined) return null;
-          const M = momentAboutPoint(p, x);
+          const at = pointAt(p, label);
+          if (!at) return null;
+          const { x, y } = at;
+          const M = momentAboutPoint(p, x, y);
           const ref = Math.max(1e-9, totalDownward(p.loads) * L);
           const r = 0.35 + 0.9 * Math.min(1, Math.abs(M) / ref);
           // one row per moment arm, stacked above the beam, so the d labels never sit on each other
           // shortcut: moment arms are drawn for the first asked point only, one row each, so labels never overlap; the steps list every arm
-          const arms = (k === 0 ? p.loads.filter((l) => l.kind === 'point' && Math.abs(l.x - x) > 1e-9) : []) as { id: string; x: number }[];
+          // shortcut: arms drawn only for vertical loads level with the point; inclined ones are listed by component in the steps
+          const arms = (k === 0 && !y ? p.loads.filter((l) => l.kind === 'point' && !l.Px && !l.y && Math.abs(l.x - x) > 1e-9) : []) as { id: string; x: number }[];
           const rowY = (i: number) => H / 2 + 0.25 + i * 0.45;
           return (
             <group key={label}>
-              <group position={[wx(x), dy(x), D / 2 + 0.05]}>
+              <group position={[wx(x), dy(x) + y * S, D / 2 + 0.05]}>
                 {Math.abs(M) > 1e-9 && <MomentArc r={r} dir={M > 0 ? 'ccw' : 'cw'} color={C.moment} />}
                 <Html position={[x > L / 2 ? -1 : 1, Math.max(r + 0.55, rowY(arms.length) + 0.1 - dy(x)), 0]} center className="label moment-label">
-                  M<sub>{label}</sub> = {showSolution ? `${fmt(Math.abs(M))} ${Mu} ${M > 0 ? '↺' : M < 0 ? '↻' : ''}` : '?'}
+                  {p.supports.some((sp) => sp.type === 'fixed' && sp.label === label) ? (
+                    <>
+                      (M<sub>R</sub>)<sub>{label}</sub>
+                    </>
+                  ) : (
+                    <>
+                      M<sub>{label}</sub>
+                    </>
+                  )}{' '}
+                  = {showSolution ? `${fmt(Math.abs(M))} ${Mu} ${M > 0 ? '↺' : M < 0 ? '↻' : ''}` : '?'}
                 </Html>
               </group>
               {arms.map((l, i) => (
@@ -291,11 +373,12 @@ function Dimensions({ xs, wx, S, unit, color }: { xs: number[]; wx: (x: number) 
 }
 
 /** Back the camera off on narrow (phone) screens so the whole beam and its supports fit the width. */
-function FitWidth() {
+function FitWidth({ reach }: { reach: number }) {
   const { camera, size } = useThree();
   useEffect(() => {
-    camera.position.z = Math.max(9.5, 15 / (size.width / size.height));
-  }, [camera, size.width, size.height]);
+    camera.position.z = Math.max(9.5, 15 / (size.width / size.height)) + 1.2 * reach;
+    camera.position.y = 1 + reach / 2;
+  }, [camera, size.width, size.height, reach]);
   return null;
 }
 
@@ -318,7 +401,7 @@ function DeformedBeam({ bx, dy, color }: { bx: (w: number) => number; dy: (x: nu
 }
 
 /** Arrow along y from `from` to `to` (tip at `to`), in the parent's frame. */
-function Arrow({ from, to, color, thin }: { from: number; to: number; color: string; thin?: boolean }) {
+export function Arrow({ from, to, color, thin }: { from: number; to: number; color: string; thin?: boolean }) {
   const len = Math.abs(to - from);
   const dir = Math.sign(to - from) || -1;
   const head = Math.min(thin ? 0.18 : 0.28, len * 0.6);
@@ -338,7 +421,7 @@ function Arrow({ from, to, color, thin }: { from: number; to: number; color: str
 }
 
 /** Transparent but still hit by the pointer (visible={false} meshes are skipped). */
-const Invisible = () => <meshBasicMaterial transparent opacity={0} depthWrite={false} />;
+export const Invisible = () => <meshBasicMaterial transparent opacity={0} depthWrite={false} />;
 
 function HitBox({ h }: { h: number }) {
   return (
@@ -365,7 +448,7 @@ function MomentArc({ r, dir, color }: { r: number; dir: 'cw' | 'ccw'; color: str
   );
 }
 
-function SupportGlyph({ type, atRight, color }: { type: Problem['supports'][number]['type']; atRight: boolean; color: string }) {
+export function SupportGlyph({ type, atRight, color }: { type: Problem['supports'][number]['type']; atRight: boolean; color: string }) {
   const tri = useMemo(() => {
     const s = new THREE.Shape();
     s.moveTo(0, 0);
@@ -407,7 +490,7 @@ function SupportGlyph({ type, atRight, color }: { type: Problem['supports'][numb
 }
 
 
-function snapStep(L: number) {
+export function snapStep(L: number) {
   const raw = L / 40;
   let step = 10 ** Math.floor(Math.log10(raw));
   if (raw / step >= 5) step *= 5;

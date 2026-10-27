@@ -1,16 +1,27 @@
+import type { Joint, JointLoad, Truss } from './truss';
 import type { Load, Problem, Support } from './types';
 
 let n = 0;
 const id = () => `id${++n}`;
 
-export function sup(type: Support['type'], x: number, label: string): Support {
-  return { id: id(), type, x, label };
+export function sup(type: Support['type'], x: number, label: string, y?: number): Support {
+  return { id: id(), type, x, label, ...(y ? { y } : {}) };
 }
-export function point(x: number, P: number): Load {
-  return { id: id(), kind: 'point', x, P };
+export function point(x: number, P: number, Px?: number, y?: number): Load {
+  return { id: id(), kind: 'point', x, P, ...(Px ? { Px } : {}), ...(y ? { y } : {}) };
+}
+/** A force of size F pointing along (dx, dy), e.g. a slope triangle's legs; y up. */
+export function inclined(x: number, F: number, dx: number, dy: number, y?: number): Load {
+  const k = F / Math.hypot(dx, dy);
+  return point(x, -k * dy, k * dx, y);
 }
 export function dist(x1: number, x2: number, w1: number, w2 = w1): Load {
   return { id: id(), kind: 'dist', x1, x2, w1, w2 };
+}
+/** w = poly[0] + poly[1] (x - x0) + ... */
+export function curved(x1: number, x2: number, poly: number[], x0?: number): Load {
+  const w = (x: number) => poly.reduce((s, c, k) => s + c * (x - (x0 ?? 0)) ** k, 0);
+  return { id: id(), kind: 'dist', x1, x2, w1: w(x1), w2: w(x2), poly, ...(x0 ? { x0 } : {}) };
 }
 export function moment(x: number, M: number, dir: 'cw' | 'ccw'): Load {
   return { id: id(), kind: 'moment', x, M, dir };
@@ -37,4 +48,18 @@ export function workedExample(): Problem {
     text: 'Simply supported beam: pin at O, roller at the right end, span 4 m. A 600 N load acts 1 m from O. Find the moment about O.',
     asked: { reactions: false, momentAbout: ['O'], shear: false, moment: false, maxValues: false, deflection: false },
   });
+}
+
+/** A truss from [label, x, y] joints, "AB" member names, and [joint, Fx, Fy] loads (kN, m). */
+export function truss(joints: [string, number, number][], members: string[], supports: Truss['supports'], loads: [string, number, number][]): Truss {
+  return {
+    kind: 'truss',
+    title: '',
+    text: '',
+    units: { system: 'SI', force: 'kN', length: 'm' },
+    joints: joints.map(([label, x, y]): Joint => ({ label, x, y })),
+    members: members.map((m) => [m[0], m[1]]),
+    supports,
+    loads: loads.map(([joint, Fx, Fy]): JointLoad => ({ id: id(), joint, Fx, Fy })),
+  };
 }

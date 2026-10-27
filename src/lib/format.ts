@@ -43,3 +43,39 @@ export function conventionText(c: SignConvention): string {
     c.forcePositive === 'up' ? '↑ upward' : '↓ downward'
   } forces positive`;
 }
+
+/** A curved load's formula as plain text, e.g. "2x² − 8x + 18". */
+export function polyText(l: { poly?: number[] }): string {
+  const sup = ['', '', '²', '³', '⁴', '⁵'];
+  const parts = (l.poly ?? [])
+    .map((c, k) => ({ c, k }))
+    .filter(({ c }) => Math.abs(c) > 1e-12)
+    .reverse()
+    .map(({ c, k }, i) => {
+      const a = fmt(Math.abs(c));
+      const body = k === 0 ? a : `${a === '1' ? '' : a}x${sup[k] ?? '^' + k}`;
+      return i === 0 ? (c < 0 ? '−' : '') + body : (c < 0 ? ' − ' : ' + ') + body;
+    });
+  return parts.join('') || '0';
+}
+
+/** "2x^2 - 8x + 18" (or 2x² − 8x + 18) → [18, -8, 2]; null if it is not a polynomial in x. */
+export function parsePoly(text: string): number[] | null {
+  const s = text.replace(/\s+/g, '').replace(/[−–]/g, '-').replace(/²/g, '^2').replace(/³/g, '^3').replace(/\*/g, '');
+  if (!s) return null;
+  const out: number[] = [];
+  const re = /([+-]?)(\d*\.?\d*)(x(?:\^(\d+))?)?/gy;
+  let i = 0;
+  while (i < s.length) {
+    re.lastIndex = i;
+    const m = re.exec(s);
+    if (!m || m[0] === '' || (!m[2] && !m[3])) return null;
+    const c = (m[1] === '-' ? -1 : 1) * (m[2] ? Number(m[2]) : 1);
+    const k = m[3] ? Number(m[4] ?? 1) : 0;
+    if (!Number.isFinite(c) || k > 6) return null;
+    while (out.length <= k) out.push(0);
+    out[k] += c;
+    i = re.lastIndex;
+  }
+  return out;
+}

@@ -66,6 +66,8 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
 
   const groupAsked: Record<ResultLine['group'], boolean> = {
     reactions: a.reactions,
+    resultant: !!a.resultant,
+    notAsked: false,
     momentAbout: a.momentAbout.length > 0,
     internal: (a.internalAt ?? []).length > 0,
     maxValues: a.maxValues || a.shear || a.moment,
@@ -337,7 +339,7 @@ function PosInput({ value, lo, hi, onCommit }: { value: number; lo: number; hi: 
   );
 }
 
-function ResultTable({ lines, hidden }: { lines: ResultLine[]; hidden: boolean }) {
+export function ResultTable({ lines, hidden }: { lines: ResultLine[]; hidden: boolean }) {
   if (!lines.length) return <p className="muted small">Nothing selected. Use "Edit problem" to choose what the problem asks for.</p>;
   return (
     <table className="results">

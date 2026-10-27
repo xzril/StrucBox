@@ -5,6 +5,8 @@ import { FolderPicker } from './components/FolderPicker';
 import { HomeScreen } from './components/HomeScreen';
 import { InputScreen } from './components/InputScreen';
 import { ModelScreen } from './components/ModelScreen';
+import { CableScreen, sampleCable } from './components/CableScreen';
+import { TrussScreen, sampleTruss } from './components/TrussScreen';
 import { SettingsDialog, type Settings, defaultSettings } from './components/SettingsDialog';
 import { aiStatus, providerName, WEB_BUILD, type Plan } from './input/api';
 import { blankProblem, newId } from './input/parse';
@@ -12,9 +14,11 @@ import { addEntry, emptyLibrary, findEntry, mapEntry, removeEntry, thumbnail, ty
 import { load, save } from './lib/storage';
 import { usePalette } from './lib/theme';
 import { defaultUnits } from './lib/units';
+import type { Cable } from './solver/cable';
+import type { Truss } from './solver/truss';
 import type { Problem } from './solver/types';
 
-type Stage = { name: 'home' } | { name: 'input'; file?: File } | { name: 'confirm' } | { name: 'model' } | { name: 'soon'; reason: string };
+type Stage = { name: 'home' } | { name: 'input'; file?: File } | { name: 'confirm' } | { name: 'model' } | { name: 'soon'; reason: string } | { name: 'truss' };
 /** The problem on screen: a saved entry (id) or a new one not yet put in a folder (id null). */
 type Current = { id: string | null; problem: Problem; file?: File };
 
@@ -25,6 +29,21 @@ export default function App() {
   const [picker, setPicker] = useState<{ moveId?: string } | null>(null);
   const [settings, setSettings] = useState<Settings>(() => load('settings', defaultSettings));
   const [showSettings, setShowSettings] = useState(false);
+  // the truss or cable on screen: a saved entry (id) or a new one (id null), the last one kept in localStorage
+  const [truss, setTruss] = useState<{ id: string | null; truss: Truss | Cable; file?: File }>(() => ({ id: null, truss: load('truss', sampleTruss()) }));
+  const changeTruss = (t: Truss | Cable) => {
+    setTruss({ ...truss, truss: t });
+    save('truss', t);
+    if (truss.id) updateLib(mapEntry(lib, truss.id, (e) => ({ ...e, problem: t, modified: now() })));
+  };
+  const openTruss = () => {
+    setTruss({ id: null, truss: sampleTruss() });
+    setStage({ name: 'truss' });
+  };
+  const openCable = () => {
+    setTruss({ id: null, truss: sampleCable() });
+    setStage({ name: 'truss' });
+  };
   const [plan, setPlan] = useState<Plan>({ premium: false, provider: null });
   useEffect(() => {
     aiStatus().then(setPlan);
@@ -63,6 +82,10 @@ export default function App() {
   const open = (id: string, name: 'model' | 'confirm') => {
     const e = findEntry(lib, id);
     if (!e) return;
+    if ('kind' in e.problem) {
+      setTruss({ id, truss: e.problem });
+      return setStage({ name: 'truss' });
+    }
     setCurrent({ id, problem: e.problem });
     setStage(name === 'model' ? { name: 'model' } : { name: 'confirm' });
   };
@@ -83,6 +106,12 @@ export default function App() {
       const e = findEntry(l, picker.moveId)!;
       return updateLib(addEntry(removeEntry(l, e.id), folderId, e));
     }
+    if (stage.name === 'truss') {
+      const id = newId();
+      const image = truss.file && (await thumbnail(truss.file));
+      updateLib(addEntry(l, folderId, { id, problem: truss.truss, image, created: now(), modified: now() }));
+      return setTruss({ ...truss, id });
+    }
     if (!current) return;
     const id = newId();
     const image = current.file && (await thumbnail(current.file));
@@ -102,7 +131,7 @@ export default function App() {
         <button className="brand" onClick={() => setStage({ name: 'home' })} title="Home">
           <span className="logo">▣</span> StrucBox
         </button>
-        {stage.name !== 'home' && (
+        {stage.name !== 'home' && stage.name !== 'truss' && (
           <nav className="steps">
             <span className={stage.name === 'input' ? 'on' : ''}>1 Problem</span>
             <span className={stage.name === 'confirm' ? 'on' : ''}>2 Confirm values</span>
@@ -141,6 +170,8 @@ export default function App() {
             onDuplicate={duplicate}
             onPhoto={(file) => setStage({ name: 'input', file })}
             onManual={manual}
+            onTruss={openTruss}
+            onCable={openCable}
             onSettings={() => setShowSettings(true)}
           />
         )}
@@ -149,7 +180,14 @@ export default function App() {
             premium={plan.premium}
             initialFile={stage.file}
             onManual={manual}
-            onParsed={(r, file) => (r.ok ? start(r.problem, file) : setStage({ name: 'soon', reason: r.reason }))}
+            onTruss={openTruss}
+            onCable={openCable}
+            onParsed={(r, file) => {
+              if (r.ok) return start(r.problem, file);
+              if (!r.truss) return setStage({ name: 'soon', reason: r.reason });
+              setTruss({ id: null, truss: r.truss, file });
+              setStage({ name: 'truss' });
+            }}
           />
         )}
         {stage.name === 'confirm' && current && (
@@ -164,7 +202,13 @@ export default function App() {
         {stage.name === 'model' && current && (
           <ModelScreen problem={current.problem} onChange={changeModel} settings={settings} onEdit={() => setStage({ name: 'confirm' })} C={C} plan={plan} />
         )}
-        {stage.name === 'soon' && <ComingSoon reason={stage.reason} onBack={() => setStage({ name: 'home' })} />}
+        {stage.name === 'soon' && <ComingSoon reason={stage.reason} onBack={() => setStage({ name: 'home' })} onTruss={/truss/i.test(stage.reason) ? openTruss : undefined} />}
+        {stage.name === 'truss' &&
+          (truss.truss.kind === 'cable' ? (
+            <CableScreen key={truss.id ?? 'new'} cable={truss.truss} photo={truss.file} onChange={changeTruss} onSave={truss.id ? undefined : () => setPicker({})} C={C} />
+          ) : (
+            <TrussScreen key={truss.id ?? 'new'} truss={truss.truss} photo={truss.file} onChange={changeTruss} onSave={truss.id ? undefined : () => setPicker({})} C={C} />
+          ))}
       </main>
 
       {picker && (

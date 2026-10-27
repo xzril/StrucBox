@@ -32,6 +32,10 @@ export function validate(p: Problem): Validation {
   if (real.length === 2 && pins.length === 1 && rollers.length === 1) {
     if (Math.abs(pins[0].x - rollers[0].x) < tol)
       return { ok: false, comingSoon: false, reason: 'The pin and roller cannot be at the same point.' };
+    const r = rollers[0];
+    const th = ((r.angle ?? 90) * Math.PI) / 180;
+    if (Math.abs(Math.sin(th) * (r.x - pins[0].x) - Math.cos(th) * ((r.y ?? 0) - (pins[0].y ?? 0))) < tol)
+      return { ok: false, comingSoon: false, reason: `The reaction at ${r.label} points straight at the pin, so the beam can turn (it is unstable).` };
     return { ok: true, kind: 'simple', primary: pins[0], secondary: rollers[0] };
   }
   if (real.length === 1 && fixed.length === 1) {

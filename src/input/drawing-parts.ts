@@ -156,3 +156,108 @@ export function rowsOf(shafts: Shaft[], textH: number): Shaft[][] {
   }
   return rows.filter((r) => r.length >= 3);
 }
+
+export interface Slant {
+  tail: [number, number];
+  tip: [number, number];
+  comp: Comp;
+}
+
+/** Straight arrows drawn at a slant: a long thin blob along one line with a head at one end. The legs of a slope
+ * triangle drawn on the shaft may hang off its middle. */
+export function slantedArrows(comps: Comp[], W: number, textH: number): Slant[] {
+  const out: Slant[] = [];
+  for (const c of comps) {
+    const w = c.x1 - c.x0 + 1, h = c.y1 - c.y0 + 1;
+    if (Math.hypot(w, h) < 3 * textH || w < 0.5 * textH || h < 0.5 * textH) continue;
+    const xs = c.pixels.map((i) => i % W), ys = c.pixels.map((i) => (i - (i % W)) / W);
+    const n = xs.length;
+    const mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
+    let sxx = 0, syy = 0, sxy = 0;
+    for (let k = 0; k < n; k++) (sxx += (xs[k] - mx) ** 2), (syy += (ys[k] - my) ** 2), (sxy += (xs[k] - mx) * (ys[k] - my));
+    const a = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+    const deg = Math.abs((a * 180) / Math.PI);
+    if (deg < 10 || deg > 80) continue;
+    const [ux, uy] = [Math.cos(a), Math.sin(a)];
+    const t = xs.map((x, k) => (x - mx) * ux + (ys[k] - my) * uy);
+    const sd = xs.map((x, k) => -(x - mx) * uy + (ys[k] - my) * ux);
+    const d = sd.map(Math.abs);
+    const thin = Math.max(2, 0.15 * textH);
+    const on = t.filter((_, k) => d[k] <= thin);
+    if (on.length < 0.5 * n) continue; // a blob, not a line
+    const [t0, t1] = [Math.min(...on), Math.max(...on)];
+    if (t1 - t0 < 3 * textH) continue;
+    // the head is the solid part: it survives eroding the blob, while the shaft, a slope triangle's legs and the
+    // stubs of lines crossing it (all thin strokes) do not
+    const own = new Set(c.pixels);
+    const r = Math.max(2, Math.round(0.15 * textH));
+    const solid = (i: number) => {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (!own.has(i + dy * W + dx)) return false;
+      return true;
+    };
+    const near = (lo: number, hi: number) => c.pixels.filter((i, k) => t[k] >= lo && t[k] <= hi && solid(i)).length;
+    const [h0, h1] = [near(t0 - 1, t0 + 1.2 * textH), near(t1 - 1.2 * textH, t1 + 1)];
+    if (Math.max(h0, h1) < 1 || Math.min(h0, h1) > 0.5 * Math.max(h0, h1)) continue;
+    const end = (tk: number): [number, number] => [mx + tk * ux, my + tk * uy];
+    out.push(h1 > h0 ? { tail: end(t0), tip: end(t1), comp: c } : { tail: end(t1), tip: end(t0), comp: c });
+  }
+  return out;
+}
+
+/** Distance from a point to the segment a–b. */
+export function segDist(p: [number, number], a: [number, number], b: [number, number]): number {
+  const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+  const k = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(p[0] - a[0] - k * dx, p[1] - a[1] - k * dy);
+}
+
+/** Direction of a slanted arrow as (right, up), from the sides of its slope triangle when one is printed by it
+ * (three numbers with a² + b² = c²), else the nearest usual angle to the drawn one: a multiple of 5° or a 3-4-5 / 5-12-13 slope. */
+export function slopeOf(s: Slant, nums: { v: number; at: [number, number] }[]): [number, number] {
+  const dx = s.tip[0] - s.tail[0], dy = s.tail[1] - s.tip[1]; // image y runs down
+  let best: [number, number] | null = null, bestD = Infinity;
+  for (const c of nums)
+    for (const p of nums)
+      for (const q of nums) {
+        if (p === q || c === p || c === q || p.v * p.v + q.v * q.v !== c.v * c.v) continue;
+        const dist = [c, p, q].reduce((t, m) => t + segDist(m.at, s.tail, s.tip), 0);
+        // p is the horizontal side when that matches the drawn slope better
+        const fit = Math.abs(Math.log(Math.abs(dy / dx) / (q.v / p.v)));
+        if (fit < Math.log(1.6) && dist < bestD) (bestD = dist), (best = [Math.sign(dx) * p.v, Math.sign(dy) * q.v]);
+      }
+  if (best) return best;
+  const drawn = Math.atan2(Math.abs(dy), Math.abs(dx));
+  const usual: [number, number][] = [[3, 4], [4, 3], [5, 12], [12, 5], ...Array.from({ length: 17 }, (_, i): [number, number] => [Math.cos(((i + 1) * Math.PI) / 36), Math.sin(((i + 1) * Math.PI) / 36)])];
+  const [h, v] = usual.reduce((a, b) => (Math.abs(Math.atan2(b[1], b[0]) - drawn) < Math.abs(Math.atan2(a[1], a[0]) - drawn) ? b : a));
+  return [Math.sign(dx) * h, Math.sign(dy) * v];
+}
+
+/** Carry a slanted arrow's tail on along its line through the ink: lines it crosses (a dimension line, the legs of its
+ * slope triangle) split it into pieces. Stops at a gap or at the beam's face. */
+export function extendTail(sl: Slant, ink: Uint8Array, W: number, H: number, textH: number, beam: Box | null): void {
+  const len = Math.hypot(sl.tip[0] - sl.tail[0], sl.tip[1] - sl.tail[1]);
+  const [ux, uy] = [(sl.tail[0] - sl.tip[0]) / len, (sl.tail[1] - sl.tip[1]) / len];
+  const inBeam = (x: number, y: number) => !!beam && x >= beam.x0 && x <= beam.x1 && y >= beam.y0 && y <= beam.y1;
+  // follow the line a pixel at a time, re-centring on its ink so a slightly-off direction does not lose it
+  let [x, y] = sl.tail;
+  let [lx, ly] = sl.tail;
+  for (let k = 1, gap = 0; gap <= Math.max(3, 0.5 * textH); k++, gap++) {
+    (x += ux), (y += uy);
+    if (x < 2 || y < 2 || x >= W - 2 || y >= H - 2 || inBeam(x, y)) break;
+    const e = [0, -1, 1, -2, 2].find((e) => ink[Math.round(y + e * ux) * W + Math.round(x - e * uy)]);
+    if (e === undefined) continue;
+    if (gap < 2) (x -= 0.5 * e * uy), (y += 0.5 * e * ux);
+    [lx, ly, gap] = [x, y, -1];
+  }
+  sl.tail = [lx, ly];
+}
+
+/** A blob beside the middle of a slanted arrow's shaft (where its slope triangle and numbers are drawn), not off its ends
+ * (where its force label sits). */
+export function alongside(c: Box, sl: Slant, textH: number): boolean {
+  const [dx, dy] = [sl.tip[0] - sl.tail[0], sl.tip[1] - sl.tail[1]];
+  const len2 = dx * dx + dy * dy;
+  const [px, py] = [(c.x0 + c.x1) / 2 - sl.tail[0], (c.y0 + c.y1) / 2 - sl.tail[1]];
+  const k = (px * dx + py * dy) / len2;
+  return k > 0.08 && k < 0.92 && Math.abs(px * dy - py * dx) / Math.sqrt(len2) < 2 * textH;
+}

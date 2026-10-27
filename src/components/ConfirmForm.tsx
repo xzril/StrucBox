@@ -1,6 +1,8 @@
+import { useRef, useState } from 'react';
 import { newId } from '../input/parse';
+import { fmt, parsePoly, polyText } from '../lib/format';
 import { E_UNITS, FORCE_UNITS, I_UNITS, I_UNIT_LABEL, LENGTH_UNITS, defaultUnits, unitStr } from '../lib/units';
-import type { Load, Problem, Support } from '../solver/types';
+import type { Load, PointLoad, Problem, Support } from '../solver/types';
 import { validate } from '../solver/validate';
 
 interface Props {
@@ -17,14 +19,39 @@ function Num({ value, onChange, step = 'any' }: { value: number; onChange: (n: n
   return <input type="number" step={step} value={Number.isFinite(value) ? value : ''} onChange={(e) => onChange(num(e.target.value))} />;
 }
 
+/** A polynomial typed as text; keeps the typed text while it does not parse yet. */
+function PolyInput({ value, onChange }: { value: number[]; onChange: (p: number[]) => void }) {
+  const [text, setText] = useState(polyText({ poly: value }).replace(/−/g, '-').replace(/²/g, '^2').replace(/³/g, '^3'));
+  return (
+    <input
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        const p = parsePoly(e.target.value);
+        if (p) onChange(p);
+      }}
+    />
+  );
+}
+
 export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoon }: Props) {
   const set = (patch: Partial<Problem>) => onChange({ ...p, ...patch });
   const setSupport = (i: number, patch: Partial<Support>) => set({ supports: p.supports.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
   const setLoad = (i: number, patch: Partial<Load>) => set({ loads: p.loads.map((l, j) => (j === i ? ({ ...l, ...patch } as Load) : l)) });
   const v = validate(p);
   const u = p.units;
+  // a point load is entered as a size F and a direction θ (degrees counter-clockwise from →; ↓ is -90) and stored as components.
+  // The direction is remembered while F is cleared to 0, so retyping F keeps it.
+  const dirs = useRef<Record<string, number>>({});
+  const dirOf = (l: PointLoad) => (l.P || l.Px ? (Math.atan2(-l.P, l.Px ?? 0) * 180) / Math.PI : dirs.current[l.id] ?? -90);
+  const setForce = (i: number, l: PointLoad, F: number, deg: number) => {
+    dirs.current[l.id] = deg;
+    const [c, sn] = [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
+    const clean = (n: number) => (Math.abs(n) < 1e-12 ? 0 : n);
+    setLoad(i, { P: clean(-F * sn), Px: clean(F * c) });
+  };
 
-  const loadType = (l: Load) => (l.kind === 'dist' ? (l.w1 === l.w2 ? 'udl' : 'linear') : l.kind);
+  const loadType = (l: Load) => (l.kind === 'dist' ? (l.poly ? 'curved' : l.w1 === l.w2 ? 'udl' : 'linear') : l.kind);
   const changeLoadType = (i: number, t: string) => {
     const l = p.loads[i];
     const x = l.kind === 'dist' ? l.x1 : l.x;
@@ -34,7 +61,9 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
         ? { ...base, kind: 'point', x, P: 10 }
         : t === 'moment'
           ? { ...base, kind: 'moment', x, M: 10, dir: 'cw' }
-          : { ...base, kind: 'dist', x1: 0, x2: p.length, w1: t === 'udl' ? 5 : 0, w2: 5 };
+          : t === 'curved'
+            ? { ...base, kind: 'dist', x1: 0, x2: p.length, w1: 0, w2: p.length ** 2, poly: [0, 0, 1] }
+            : { ...base, kind: 'dist', x1: 0, x2: p.length, w1: t === 'udl' ? 5 : 0, w2: 5 };
     set({ loads: p.loads.map((m, j) => (j === i ? next : m)) });
   };
 
@@ -92,6 +121,8 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
               <th>Label</th>
               <th>Type</th>
               <th>x ({u.length})</th>
+              <th title="Height of the support above the beam, when it sits on an arm (an L-shaped member). Usually 0.">y, arm ({u.length})</th>
+              <th title="Rollers only: direction of the reaction, degrees counter-clockwise from the +x axis. 90 = straight up. Use it for a rocker, a roller on an incline, or a cable or link (along the cable).">reaction angle (°)</th>
               <th />
             </tr>
           </thead>
@@ -112,6 +143,10 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
                 <td>
                   <Num value={s.x} onChange={(x) => setSupport(i, { x })} />
                 </td>
+                <td>
+                  <Num value={s.y ?? 0} onChange={(y) => setSupport(i, { y })} />
+                </td>
+                <td>{s.type === 'roller' && <Num value={s.angle ?? 90} onChange={(a) => setSupport(i, { angle: a === 90 ? undefined : a })} />}</td>
                 <td>
                   <button className="icon" title="Remove" onClick={() => set({ supports: p.supports.filter((_, j) => j !== i) })}>
                     ✕
@@ -142,6 +177,7 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
                     <option value="point">Point load</option>
                     <option value="udl">Uniform (UDL)</option>
                     <option value="linear">Triangular / linear</option>
+                    <option value="curved">Curved, w = f(x)</option>
                     <option value="moment">Applied moment</option>
                   </select>
                 </td>
@@ -149,11 +185,21 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
                   {l.kind === 'point' && (
                     <>
                       <label>
-                        P ({unitStr.force(u)}, + down) <Num value={l.P} onChange={(P) => setLoad(i, { P })} />
+                        F ({unitStr.force(u)}) <Num value={Number(fmt(Math.hypot(l.P, l.Px ?? 0), 6))} onChange={(F) => setForce(i, l, F, dirOf(l))} />
+                      </label>
+                      <label title="Direction in degrees, counter-clockwise from → (↓ -90, ↑ 90, ← 180). A 3-4-5 slope is 36.87° or 53.13° from the horizontal.">
+                        θ (°) <Num value={Number(fmt(dirOf(l), 6))} onChange={(d) => setForce(i, l, Math.hypot(l.P, l.Px ?? 0), d)} />
                       </label>
                       <label>
                         x <Num value={l.x} onChange={(x) => setLoad(i, { x })} />
                       </label>
+                      <label title="Height of the point of application above the beam (a bracket or arm). Usually 0.">
+                        y <Num value={l.y ?? 0} onChange={(y) => setLoad(i, { y })} />
+                      </label>
+                      <span className="muted small">
+                        {l.Px ? `= ${fmt(Math.abs(l.Px))} ${l.Px > 0 ? '→' : '←'}` : '='}
+                        {l.P ? ` ${fmt(Math.abs(l.P))} ${l.P > 0 ? '↓' : '↑'}` : ''}
+                      </span>
                     </>
                   )}
                   {l.kind === 'moment' && (
@@ -174,7 +220,16 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
                   )}
                   {l.kind === 'dist' && (
                     <>
-                      {l.w1 === l.w2 && loadType(l) === 'udl' ? (
+                      {l.poly ? (
+                        <>
+                          <label title="A polynomial in x, e.g. 2x^2 - 8x + 18. Downward positive.">
+                            w = <PolyInput value={l.poly} onChange={(poly) => setLoad(i, { poly })} />
+                          </label>
+                          <label title="Where the formula's x = 0 is, measured along the beam from its left end.">
+                            x = 0 at <Num value={l.x0 ?? 0} onChange={(x0) => setLoad(i, { x0 })} />
+                          </label>
+                        </>
+                      ) : l.w1 === l.w2 && loadType(l) === 'udl' ? (
                         <label>
                           w ({unitStr.dist(u)}, + down) <Num value={l.w1} onChange={(w) => setLoad(i, { w1: w, w2: w })} />
                         </label>
@@ -211,12 +266,15 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
         </button>
 
         <h3>Other named points</h3>
-        <p className="muted small">Points where the problem asks for a value, e.g. "shear and moment at C".</p>
+        <p className="muted small">Points where the problem asks for a value, e.g. "shear and moment at C" or "moment about O". y is the height above the beam axis.</p>
         {p.points.map((q, i) => (
           <div className="inline" key={i}>
             <input className="short" value={q.label} onChange={(e) => set({ points: p.points.map((r, j) => (j === i ? { ...r, label: e.target.value } : r)) })} />
             <label>
               x <Num value={q.x} onChange={(x) => set({ points: p.points.map((r, j) => (j === i ? { ...r, x } : r)) })} />
+            </label>
+            <label title="Height above the beam, for a point off the beam such as O on an L-shaped member">
+              y <Num value={q.y ?? 0} onChange={(y) => set({ points: p.points.map((r, j) => (j === i ? { ...r, y } : r)) })} />
             </label>
             <button className="icon" onClick={() => set({ points: p.points.filter((_, j) => j !== i) })}>
               ✕
@@ -297,6 +355,7 @@ export function AskedChecks({ problem: p, onChange }: { problem: Problem; onChan
       {(
         [
           ['reactions', 'Support reactions'],
+          ['resultant', 'Equivalent resultant force and its location'],
           ['shear', 'Shear force diagram'],
           ['moment', 'Bending moment diagram'],
           ['maxValues', 'Maximum shear and moment'],
@@ -304,7 +363,7 @@ export function AskedChecks({ problem: p, onChange }: { problem: Problem; onChan
         ] as const
       ).map(([k, text]) => (
         <label key={k}>
-          <input type="checkbox" checked={p.asked[k]} onChange={(e) => set({ asked: { ...p.asked, [k]: e.target.checked } })} /> {text}
+          <input type="checkbox" checked={!!p.asked[k]} onChange={(e) => set({ asked: { ...p.asked, [k]: e.target.checked } })} /> {text}
         </label>
       ))}
       {labels.map((l) => (
@@ -328,7 +387,7 @@ export function AskedChecks({ problem: p, onChange }: { problem: Problem; onChan
               checked={at.includes(l)}
               onChange={(e) => set({ asked: { ...p.asked, internalAt: e.target.checked ? [...at, l] : at.filter((m) => m !== l) } })}
             />{' '}
-            Shear and moment at {l}
+            {p.loads.some((q) => q.kind === 'point' && q.Px) ? 'Normal force, shear and moment' : 'Shear and moment'} at {l}
           </label>
         );
       })}

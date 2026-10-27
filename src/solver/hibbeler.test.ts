@@ -1,9 +1,9 @@
 // Beam problems from Hibbeler, Engineering Mechanics: Statics (14th ed.), checked against the published
-// answers (worked solutions at prepscholar.com/solutions/engineering-mechanics-statics-and-dynamics-14th-edition-chapter-7-problem-<n>P/).
+// answers (worked solutions at prepscholar.com/solutions/engineering-mechanics-statics-and-dynamics-14th-edition-chapter-<c>-problem-<n>P/).
 // Only the numbers are kept. Where the published solution has an arithmetic slip, the expected value is the
 // statics-correct one and the comment says so.
 import { describe, expect, it } from 'vitest';
-import { beam, dist, moment, point, sup } from './fixtures';
+import { beam, dist, inclined, moment, point, sup } from './fixtures';
 import { solve, valueAt, type Solution } from './solve';
 import type { Problem } from './types';
 
@@ -18,6 +18,22 @@ const M = (s: Solution, x: number, side: 'left' | 'right' = 'right') => valueAt(
 const V = (s: Solution, x: number, side: 'left' | 'right' = 'right') => valueAt(s.segments, x, 'V', side);
 
 describe('Hibbeler Statics, chapter 7 beams', () => {
+  it('7-7: pin A, roller B at 12 ft, triangle 0 → 4 kip/ft over AC (6 ft); V and M at C', () => {
+    const s = ok(beam(12, [sup('pin', 0, 'A'), sup('roller', 12, 'B')], [dist(0, 6, 0, 4)]));
+    near(s.reactions[1].Ry, 4);
+    near(V(s, 6), -4);
+    near(M(s, 6), 24);
+  });
+
+  it('7-23: 400 N pulled horizontally by a pulley cable 1.2 m above the axis at 3 m, pin A, roller B at 5 m; N, V, M at C (1.5 m)', () => {
+    const s = ok(beam(5, [sup('pin', 0, 'A'), sup('roller', 5, 'B')], [point(3, 0, 400, 1.2)]));
+    near(s.reactions[0].Ry, -96);
+    near(s.reactions[0].Rx, -400);
+    near(valueAt(s.segments, 1.5, 'N'), 400);
+    near(V(s, 1.5), -96);
+    near(M(s, 1.5), -144);
+  });
+
   it('7-51: overhang, UDL over the whole beam (w = 1, a = 2)', () => {
     const s = ok(beam(4, [sup('pin', 0, 'A'), sup('roller', 2, 'B')], [dist(0, 4, 1)]));
     near(s.reactions[0].Ry, 0);
@@ -95,5 +111,42 @@ describe('Hibbeler Statics, chapter 7 beams', () => {
     near(V(s, 7.5), -11.25);
     near(M(s, 7.5), -37.5);
     near(s.min.M.value, -187.5);
+  });
+});
+
+describe('Hibbeler Statics, chapter 5 reactions', () => {
+  const roller = (x: number, label: string, angle: number) => ({ ...sup('roller', x, label), angle });
+
+  it('5-11: triangle peaking 400 N/m at midspan of 6 m, smooth incline (3-4-5) at A, pin at B', () => {
+    // N_A acts up and to the left, normal to the 3-4-5 incline: 180° - 53.13°
+    const s = ok(beam(6, [roller(0, 'A', 180 - (Math.atan2(4, 3) * 180) / Math.PI), sup('pin', 6, 'B')], [dist(0, 3, 0, 400), dist(3, 6, 400, 0)]));
+    const [A, B] = s.reactions;
+    near(A.R!, 750);
+    near(B.Rx, 450);
+    near(B.Ry, 600);
+  });
+
+  it('5-12: 4 kN at 6 m, pin A, rocker at B (8 m) pushing at 60° up and to the left', () => {
+    const s = ok(beam(8, [sup('pin', 0, 'A'), roller(8, 'B', 120)], [point(6, 4)]));
+    const [A, B] = s.reactions;
+    near(B.R!, 3.46);
+    near(A.Rx, 1.73);
+    near(A.Ry, 1.0);
+  });
+
+  it('5-4RP: lever, roller B 18 in left of pin A, 50 lb at 30° from vertical, 20 in right of A and 14 in below the axis', () => {
+    const s = ok(beam(38, [sup('roller', 0, 'B'), sup('pin', 18, 'A')], [inclined(38, 50, -Math.sin(Math.PI / 6), -Math.cos(Math.PI / 6), -14)]));
+    const [B, A] = s.reactions;
+    near(A.Rx, 25);
+    near(A.Ry, 110.86);
+    near(B.Ry, -67.56); // the roller pushes down on the lever
+  });
+
+  it('5-47: pin A, cord BC at B (3-4-5, up and right), 26 kN on a 5-12-13 slope at 2 m, 40 kN at B (6 m)', () => {
+    const s = ok(beam(6, [sup('pin', 0, 'A'), roller(6, 'B', (Math.atan2(3, 4) * 180) / Math.PI)], [inclined(2, 26, -5, -12), point(6, 40)]));
+    const [A, B] = s.reactions;
+    near(B.R!, 80); // cord tension
+    near(A.Rx, -54); // 54 kN to the left
+    near(A.Ry, 16);
   });
 });

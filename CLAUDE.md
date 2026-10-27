@@ -5,8 +5,11 @@ App for engineering students (priority) and teachers that turns a textbook struc
 ## Prototype scope
 - Desktop, local-only, no accounts (D3, D10).
 - **Beams only, statically determinate** (D8, D26): simply supported, overhang (pin + roller anywhere), cantilever (fixed + free end).
-- Supports: pin, roller, fixed, free end (D23). Loads: point, UDL, triangular (linear), applied moment.
-- Anything else (trusses, frames, indeterminate beams, other supports) shows **"Coming soon!"** (D29).
+- Supports: pin, roller, fixed, free end (D23), optionally on a rigid arm (L-shaped member). Loads: point (vertical or inclined, by angle or slope triangle; optionally off the axis on a bracket), UDL, triangular (linear), applied moment. Moment of the loads about any point, on or off the beam.
+- Rollers can be inclined (rocker, incline, cable/link: `Support.angle`). Curved loads `w = f(x)` (`DistLoad.poly`). "Equivalent resultant force and location" (`asked.resultant`).
+- **Plane trusses** (statically determinate, pin/roller supports, joint loads) on the Truss screen: member forces T/C, reactions, method of joints, and method of sections for asked members. Saved in folders like beams. From a photo: the AI reads the whole truss; offline, the text gives units and asked members and the joints are typed from the figure shown beside the form.
+- **Hanging cables** (Hibbeler 7.4) on the Cable screen: concentrated loads, load along the horizontal (uniform or linear), own weight (catenary); one given fact fixes the sag (a point of the cable, sag, T_max, F_H or length). Results: F_H, tension per segment / at the supports, T_max, load sags, length. The 3D view draws the solved shape; dragging a load re-sags it live.
+- Anything else (frames, space trusses, indeterminate structures, inclined members, friction) shows **"Coming soon!"** (D29).
 
 ## Core flow
 1. Photo of the problem → OCR (D2) + optional word-problem text.
@@ -32,12 +35,14 @@ App for engineering students (priority) and teachers that turns a textbook struc
 Simply supported, pin at O (x=0), roller at x=4 m, 600 N down at x=1 m. M_O = 600 N·m clockwise; R_O = 450 N, R_B = 150 N. Load at x=3 m → M_O = 1800 N·m.
 
 ## Later (not now)
-Indeterminate beams, more supports, trusses/frames/arches/cables, sandbox free-tier limits (D5, D22), accounts, teacher mode, mobile (Capacitor), freemium + school licences (D11).
+Indeterminate beams, more supports, frames/arches/cables, trusses from photos, sandbox free-tier limits (D5, D22), accounts, teacher mode, mobile (Capacitor), freemium + school licences (D11).
 
 ## Code map
 - `src/solver/` pure math (`solve.ts`: reactions, exact piecewise V/M, double-integration deflection). Tests next to it.
 - `src/lib/report.ts` worked steps (TeX), result lines, template explanation. `format.ts` sign convention.
-- `src/input/` OCR (Tesseract, served offline from node_modules), local text parser, AI JSON mapping. `drawing.ts` reads the figure itself offline (deskew, beam, dimension line → length and x scale, point/distributed loads from arrows, couples from arcs, pin/roller/fixed); `applyDrawing` lets it override the text's geometry (or, when the text places every load with "x=" labels, only sets load shapes). Its steps: `drawing-pixels.ts` (deskew, ink, lines, blobs, shafts), `drawing-parts.ts` (beam, dimension ticks, supports, arrow rows), `drawing-labels.ts` (label reading). Labels are read by `glyphs.ts`, a small MLP (`glyph-model.json`, trained by `scripts/train_glyphs.py` on printed + handwriting fonts). Test fixture: the owner's drawing in `src/input/fixtures/`.
+- `src/input/` OCR (Tesseract, served offline from node_modules), local text parser, AI JSON mapping. `drawing.ts` reads the figure itself offline (deskew, beam, dimension line → length and x scale, point/distributed loads from arrows, couples from arcs, pin/roller/fixed, slanted arrows with their slope-triangle numbers, an L-shaped member's arm and its height); `applyDrawing` lets it override the text's geometry (or, when the text places every load with "x=" labels, only sets load shapes). Its steps: `drawing-pixels.ts` (deskew, ink, lines, blobs, shafts), `drawing-parts.ts` (beam, dimension ticks, supports, arrow rows), `drawing-labels.ts` (label reading). Labels are read by `glyphs.ts`, a small MLP (`glyph-model.json`, trained by `scripts/train_glyphs.py` on printed + handwriting fonts). Test fixture: the owner's drawing in `src/input/fixtures/`.
+- `src/solver/truss.ts` truss solver (all joint equations solved together); `src/lib/trussReport.ts` reactions, method of sections (`sections`, `sectionStep`) and joints steps; `src/components/TrussScreen.tsx` form, SVG drawing, results.
+- `src/solver/cable.ts` cable solver (cable theorem y = chord − M/F_H, or catenary; F_H found from the given fact by scanning + bisection, tautest root); `src/lib/cableReport.ts` steps; `src/components/CableScreen.tsx` form + results, `CableView3D.tsx` tension-shaded cable.
 - `src/components/` screens: HomeScreen (folders of saved problems, bottom belt) → Input → ConfirmForm → FolderPicker → ModelScreen (pinned 3D BeamView3D, Diagram). Saved problems: `src/lib/library.ts` (localStorage).
 - `server/ai.ts` Vite middleware for `/api/status`, `/api/parse`, `/api/explain`, `/api/ask`; Claude or Gemini (`AI_PROVIDER`, keys from `.env`).
 - `src/lib/theme.ts` two-tone palette (navy structure/reactions, amber loads), light/dark.

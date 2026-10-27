@@ -11,7 +11,7 @@ const MODEL = 'claude-opus-5-5';
 const PROBLEM_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['structure', 'unsupportedReason', 'title', 'units', 'length', 'supports', 'loads', 'points', 'asked', 'stiffness'],
+  required: ['structure', 'unsupportedReason', 'title', 'units', 'length', 'supports', 'loads', 'points', 'asked', 'stiffness', 'truss', 'cable'],
   properties: {
     structure: { type: 'string', enum: ['beam', 'truss', 'frame', 'arch', 'cable', 'incline_or_friction', 'other'] },
     unsupportedReason: { type: 'string', description: 'Empty if this is a beam problem.' },
@@ -32,10 +32,12 @@ const PROBLEM_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['type', 'x', 'label'],
+        required: ['type', 'x', 'y', 'angle', 'label'],
         properties: {
           type: { type: 'string', enum: ['pin', 'roller', 'fixed', 'free'] },
           x: { type: 'number' },
+          y: { type: 'number', description: 'height above the beam axis when the support sits on a rigid arm (L-shaped member); 0 otherwise' },
+          angle: { type: 'number', description: 'roller only: direction of its reaction in degrees counter-clockwise from +x: 90 for an ordinary roller; tilted for a rocker, a roller on an incline (normal to the surface), or a cable/link/strut (along it, toward where the cable is anchored); 90 when unused' },
           label: { type: 'string' },
         },
       },
@@ -45,15 +47,20 @@ const PROBLEM_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['kind', 'x', 'P', 'x1', 'x2', 'w1', 'w2', 'M', 'dir', 'label'],
+        required: ['kind', 'x', 'P', 'dirX', 'dirY', 'y', 'x1', 'x2', 'w1', 'w2', 'poly', 'x0', 'M', 'dir', 'label'],
         properties: {
           kind: { type: 'string', enum: ['point', 'dist', 'moment'] },
           x: { type: 'number', description: 'point or moment position; 0 for dist' },
-          P: { type: 'number', description: 'point load magnitude, positive downward; 0 otherwise' },
+          P: { type: 'number', description: 'point load magnitude as printed (positive); 0 otherwise' },
+          dirX: { type: 'number', description: 'point load direction, horizontal part (right positive): the slope triangle leg or cos of the angle; 0 for a vertical load' },
+          dirY: { type: 'number', description: 'point load direction, vertical part (up positive): the slope triangle leg or sin of the angle; -1 for a plain downward load' },
+          y: { type: 'number', description: 'height of the point load above the beam axis (bracket or arm); 0 otherwise' },
           x1: { type: 'number' },
           x2: { type: 'number' },
           w1: { type: 'number', description: 'intensity at x1, positive downward' },
           w2: { type: 'number', description: 'intensity at x2 (equal to w1 for a UDL)' },
+          poly: { type: 'array', items: { type: 'number' }, description: 'curved load given by a formula only: coefficients [c0, c1, c2, ...] of w = c0 + c1 x + c2 x² + ... (downward positive), x measured from x0; [] for uniform or linear loads' },
+          x0: { type: 'number', description: "where the formula's x = 0 lies, in beam x; 0 otherwise" },
           M: { type: 'number', description: 'applied moment magnitude' },
           dir: { type: 'string', enum: ['cw', 'ccw'] },
           label: { type: 'string' },
@@ -66,22 +73,84 @@ const PROBLEM_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['label', 'x'],
-        properties: { label: { type: 'string' }, x: { type: 'number' } },
+        required: ['label', 'x', 'y'],
+        properties: { label: { type: 'string' }, x: { type: 'number' }, y: { type: 'number', description: 'height above the beam axis; 0 if on it' } },
       },
     },
     asked: {
       type: 'object',
       additionalProperties: false,
-      required: ['reactions', 'momentAbout', 'internalAt', 'shear', 'moment', 'maxValues', 'deflection'],
+      required: ['reactions', 'resultant', 'momentAbout', 'internalAt', 'shear', 'moment', 'maxValues', 'deflection'],
       properties: {
         reactions: { type: 'boolean' },
+        resultant: { type: 'boolean', description: 'the equivalent resultant force of the loads and its location asked ("replace the loading by an equivalent resultant force and specify its location")' },
         momentAbout: { type: 'array', items: { type: 'string' }, description: 'labels of points the moment of the loads is asked about ("moment of the forces about O")' },
         internalAt: { type: 'array', items: { type: 'string' }, description: 'labels of points where the internal shear and bending moment are asked ("internal shear and moment at C"); add the point to points if it is not a support' },
         shear: { type: 'boolean', description: 'shear force diagram asked' },
         moment: { type: 'boolean', description: 'bending moment diagram asked' },
         maxValues: { type: 'boolean' },
         deflection: { type: 'boolean' },
+      },
+    },
+    truss: {
+      type: 'object',
+      additionalProperties: false,
+      description: 'Plane truss only (structure "truss"); empty arrays otherwise.',
+      required: ['joints', 'members', 'supports', 'loads', 'askedMembers'],
+      properties: {
+        joints: {
+          type: 'array',
+          items: { type: 'object', additionalProperties: false, required: ['label', 'x', 'y'], properties: { label: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } } },
+          description: 'every joint with its coordinates (x right, y up) from the dimensions in the figure',
+        },
+        members: { type: 'array', items: { type: 'string' }, description: 'each member as its two joint labels, e.g. "AB"; "A1-B1" for longer labels' },
+        supports: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['joint', 'type', 'angle'],
+            properties: { joint: { type: 'string' }, type: { type: 'string', enum: ['pin', 'roller'] }, angle: { type: 'number', description: 'roller: direction of its reaction, degrees ccw from +x; 90 for an ordinary roller' } },
+          },
+        },
+        loads: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['joint', 'F', 'dirX', 'dirY'],
+            properties: { joint: { type: 'string' }, F: { type: 'number', description: 'magnitude as printed' }, dirX: { type: 'number' }, dirY: { type: 'number', description: 'direction as drawn (slope legs or cos/sin), -1 for straight down' } },
+          },
+        },
+        askedMembers: { type: 'array', items: { type: 'string' }, description: 'members whose force is asked; [] if "each member"' },
+      },
+    },
+    cable: {
+      type: 'object',
+      additionalProperties: false,
+      description: 'Hanging cable or chain only (structure "cable", Hibbeler 7.4); zeros / [] otherwise. x from the left support A, y up from A.',
+      required: ['labelA', 'labelB', 'span', 'rise', 'loads', 'w1', 'w2', 'w0', 'w0IsMass', 'given'],
+      properties: {
+        labelA: { type: 'string' },
+        labelB: { type: 'string' },
+        span: { type: 'number', description: 'horizontal distance from A to B' },
+        rise: { type: 'number', description: 'height of B above A (negative if lower)' },
+        loads: {
+          type: 'array',
+          items: { type: 'object', additionalProperties: false, required: ['label', 'x', 'P'], properties: { label: { type: 'string' }, x: { type: 'number' }, P: { type: 'number', description: 'downward, as printed' } } },
+          description: 'concentrated loads hanging from the cable',
+        },
+        w1: { type: 'number', description: 'load per horizontal length at A (a deck or uniform load along the horizontal); 0 if none' },
+        w2: { type: 'number', description: 'the same at B; equal to w1 when uniform' },
+        w0: { type: 'number', description: "the cable's own weight (or mass) per length of cable, as printed; 0 if none" },
+        w0IsMass: { type: 'boolean', description: 'true when w0 is printed in kg/m' },
+        given: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind', 'x', 'y', 'value'],
+          description: 'the one given fact that fixes the sag: y = a point (x, y) the cable passes through (e.g. a load drawn 3 m below A has y = -3); sag = lowest point h (value) below A; Tmax, H (horizontal tension) or length = value',
+          properties: { kind: { type: 'string', enum: ['y', 'sag', 'Tmax', 'H', 'length'] }, x: { type: 'number' }, y: { type: 'number' }, value: { type: 'number' } },
+        },
       },
     },
     stiffness: {
@@ -102,11 +171,14 @@ const PROBLEM_SCHEMA = {
 const PARSE_SYSTEM = `You read textbook statics problems and convert them to a JSON description of a beam. Do not solve the problem.
 Rules:
 - x is measured from the beam's left end in the problem's length unit. Use the problem's own units (SI or US customary).
-- Supports: pin, roller, fixed, or free (free end). Label supports and points with the letters used in the problem (e.g. O, A, B).
-- Loads: "point" (P > 0 downward), "dist" for uniform or linearly varying (triangular) loads (w1 at x1, w2 at x2), "moment" for an applied couple with its direction.
+- Supports: pin, roller, fixed, or free (free end). A cable, link, strut, rocker or smooth inclined surface holding the beam at one point is a "roller" whose angle is the direction of its force. Label supports and points with the letters used in the problem (e.g. O, A, B).
+- Coordinates: x along the beam from its left end, y up from the beam axis. An L-shaped member is the beam plus a rigid arm: give the support (or point) at the arm's end its y.
+- Loads: "point" (P is the printed magnitude; dirX, dirY give the direction it points, copied from the slope triangle or angle without resolving: 500 N up and to the right on a 3-4-5 triangle with the 4 horizontal is dirX = 4, dirY = 3; a downward load is dirX = 0, dirY = -1), "dist" for uniform or linearly varying (triangular) loads (w1 at x1, w2 at x2), "moment" for an applied couple with its direction.
 - Unused numeric fields are 0. Use dir "cw" when unused.
 - "asked" lists only what the problem asks for.
-- If the problem is not a beam (truss, frame, incline with friction, etc.), set structure accordingly and explain briefly in unsupportedReason.
+- A plane truss: set structure "truss" and fill "truss" (joints with coordinates from the figure's dimensions, members, supports, joint loads, asked members); leave the beam fields at 0 / [].
+- A hanging cable or chain carrying loads or its own weight (sag, tension in each segment, catenary): set structure "cable" and fill "cable". A cable that only holds up a beam is part of the beam (a roller).
+- If the problem is neither a beam, a plane truss nor a hanging cable (frame, space truss, incline with friction, etc.), set structure accordingly and explain briefly in unsupportedReason.
 - The OCR text may contain errors; the photo, if present, is the better source for the diagram.`;
 
 const EXPLAIN_SYSTEM = `You write the explanation panel of a statics teaching app for engineering students.
