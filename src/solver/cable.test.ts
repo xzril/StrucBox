@@ -1,6 +1,6 @@
 // Cables from Hibbeler, Engineering Mechanics: Statics (12th ed.), section 7.4. The manual's cable solutions online are
 // images, so every expected value here was solved by hand independently (vertex form of the parabola / catenary, or
-// joint-by-joint equilibrium), and agrees with the book's printed answers where they are known (7-104, 7-107, 7-112).
+// joint-by-joint equilibrium). 7-104, 7-107 and 7-112 also agree with the back-of-book answers as recalled (book: …).
 import { describe, expect, it } from 'vitest';
 import { fromAi, localParse } from '../input/parse';
 import { solveCable, type Cable, type CableGiven, type CableSolution } from './cable';
