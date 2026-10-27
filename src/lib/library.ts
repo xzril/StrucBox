@@ -1,9 +1,10 @@
 // Saved problems, sorted into user folders. Kept in localStorage with everything else (D10).
+import type { Truss } from '../solver/truss';
 import type { Problem } from '../solver/types';
 
 export interface Entry {
   id: string;
-  problem: Problem;
+  problem: Problem | Truss;
   image?: string; // small JPEG data URL of the photo, for quick recognition
   created: string; // ISO dates
   modified: string;
@@ -26,7 +27,8 @@ export function sortItems(items: Entry[], by: SortBy): Entry[] {
   return [...items].sort((a, b) => (by === 'name' ? a.problem.title.localeCompare(b.problem.title) : b[by].localeCompare(a[by])));
 }
 
-export function beamKind(p: Problem): string {
+export function beamKind(p: Problem | Truss): string {
+  if ('kind' in p) return 'Truss';
   if (p.supports.some((s) => s.type === 'fixed')) return 'Cantilever';
   const ends = p.supports.every((s) => s.x <= 1e-9 || s.x >= p.length - 1e-9);
   return ends ? 'Simply supported' : 'Overhang';

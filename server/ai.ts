@@ -11,7 +11,7 @@ const MODEL = 'claude-opus-5-5';
 const PROBLEM_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['structure', 'unsupportedReason', 'title', 'units', 'length', 'supports', 'loads', 'points', 'asked', 'stiffness'],
+  required: ['structure', 'unsupportedReason', 'title', 'units', 'length', 'supports', 'loads', 'points', 'asked', 'stiffness', 'truss'],
   properties: {
     structure: { type: 'string', enum: ['beam', 'truss', 'frame', 'arch', 'cable', 'incline_or_friction', 'other'] },
     unsupportedReason: { type: 'string', description: 'Empty if this is a beam problem.' },
@@ -92,6 +92,39 @@ const PROBLEM_SCHEMA = {
         deflection: { type: 'boolean' },
       },
     },
+    truss: {
+      type: 'object',
+      additionalProperties: false,
+      description: 'Plane truss only (structure "truss"); empty arrays otherwise.',
+      required: ['joints', 'members', 'supports', 'loads', 'askedMembers'],
+      properties: {
+        joints: {
+          type: 'array',
+          items: { type: 'object', additionalProperties: false, required: ['label', 'x', 'y'], properties: { label: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } } },
+          description: 'every joint with its coordinates (x right, y up) from the dimensions in the figure',
+        },
+        members: { type: 'array', items: { type: 'string' }, description: 'each member as its two joint labels, e.g. "AB"; "A1-B1" for longer labels' },
+        supports: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['joint', 'type', 'angle'],
+            properties: { joint: { type: 'string' }, type: { type: 'string', enum: ['pin', 'roller'] }, angle: { type: 'number', description: 'roller: direction of its reaction, degrees ccw from +x; 90 for an ordinary roller' } },
+          },
+        },
+        loads: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['joint', 'F', 'dirX', 'dirY'],
+            properties: { joint: { type: 'string' }, F: { type: 'number', description: 'magnitude as printed' }, dirX: { type: 'number' }, dirY: { type: 'number', description: 'direction as drawn (slope legs or cos/sin), -1 for straight down' } },
+          },
+        },
+        askedMembers: { type: 'array', items: { type: 'string' }, description: 'members whose force is asked; [] if "each member"' },
+      },
+    },
     stiffness: {
       type: 'object',
       additionalProperties: false,
@@ -115,7 +148,8 @@ Rules:
 - Loads: "point" (P is the printed magnitude; dirX, dirY give the direction it points, copied from the slope triangle or angle without resolving: 500 N up and to the right on a 3-4-5 triangle with the 4 horizontal is dirX = 4, dirY = 3; a downward load is dirX = 0, dirY = -1), "dist" for uniform or linearly varying (triangular) loads (w1 at x1, w2 at x2), "moment" for an applied couple with its direction.
 - Unused numeric fields are 0. Use dir "cw" when unused.
 - "asked" lists only what the problem asks for.
-- If the problem is not a beam (truss, frame, incline with friction, etc.), set structure accordingly and explain briefly in unsupportedReason.
+- A plane truss: set structure "truss" and fill "truss" (joints with coordinates from the figure's dimensions, members, supports, joint loads, asked members); leave the beam fields at 0 / [].
+- If the problem is neither a beam nor a plane truss (frame, space truss, incline with friction, etc.), set structure accordingly and explain briefly in unsupportedReason.
 - The OCR text may contain errors; the photo, if present, is the better source for the diagram.`;
 
 const EXPLAIN_SYSTEM = `You write the explanation panel of a statics teaching app for engineering students.

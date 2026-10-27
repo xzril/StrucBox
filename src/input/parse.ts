@@ -3,6 +3,7 @@
 // user confirms every value before the model is built (D7).
 
 import { parsePoly } from '../lib/format';
+import type { Truss } from '../solver/truss';
 import type { ForceUnit, LengthUnit, Load, Problem, Support } from '../solver/types';
 
 let n = 0;
@@ -45,10 +46,35 @@ export function workedExample(): Problem {
 }
 
 // exact: the text itself placed every load ("x=1.0", "x=[1.5, 2.5]"), so the drawing should not move them
-export type ParseResult = { ok: true; problem: Problem; exact?: boolean } | { ok: false; comingSoon: true; reason: string };
+// a truss is not a beam: it comes back as "not ok" with the truss read so far, and goes to the Truss screen
+export type ParseResult = { ok: true; problem: Problem; exact?: boolean } | { ok: false; comingSoon: true; reason: string; truss?: Truss };
 
 /** Map the AI's JSON (see server/ai.ts schema) to a Problem. */
 export function fromAi(j: any, text: string): ParseResult {
+  if (j.structure === 'truss' && j.truss) {
+    const t = j.truss;
+    return {
+      ok: false,
+      comingSoon: true,
+      reason: 'Truss problems',
+      truss: {
+        kind: 'truss',
+        title: j.title || 'Truss',
+        text,
+        units: j.units,
+        joints: t.joints ?? [],
+        members: (t.members ?? []).map((m: string) => (m.includes('-') ? m.split('-') : [m[0], m.slice(1)])),
+        supports: (t.supports ?? []).map((s: any) => ({ joint: s.joint, type: s.type, ...(s.type === 'roller' && s.angle && s.angle !== 90 ? { angle: s.angle } : {}) })),
+        // the AI copies the direction as drawn; resolving into components happens here (D24)
+        loads: (t.loads ?? []).map((l: any) => {
+          const [dx, dy] = l.dirX || l.dirY ? [l.dirX, l.dirY] : [0, -1];
+          const k = l.F / Math.hypot(dx, dy);
+          return { id: newId(), joint: l.joint, Fx: k * dx, Fy: k * dy };
+        }),
+        asked: t.askedMembers ?? [],
+      },
+    };
+  }
   if (j.structure !== 'beam')
     return { ok: false, comingSoon: true, reason: j.unsupportedReason || `${String(j.structure).replace(/_/g, ' ')} problems` };
   const loads: Load[] = (j.loads ?? []).map((l: any): Load => {
@@ -91,6 +117,27 @@ function forceUnit(s: string): ForceUnit {
 }
 
 /** Offline best-effort reader. Fills what it can; the confirm step fixes the rest. */
+/** Offline, a truss's geometry is entered by hand from the figure; the text still gives the units and the asked members. */
+export function trussFromText(raw: string): Truss {
+  const text = raw.replace(/\s+/g, ' ');
+  const unit = text.match(new RegExp(`${NUM}\\s*${FORCE}\\b`, 'i'))?.[2];
+  const fu = unit ? forceUnit(unit) : 'kN';
+  const system = fu === 'N' || fu === 'kN' ? 'SI' : 'US';
+  // "force in members BC, HC and HG"
+  const list = text.match(/members?\s+((?:[A-Z]{2}\s*(?:,|and|&)?\s*)+)/)?.[1] ?? '';
+  return {
+    kind: 'truss',
+    title: 'Truss',
+    text: raw.trim(),
+    units: { system, force: fu, length: system === 'SI' ? 'm' : 'ft' },
+    joints: [],
+    members: [],
+    supports: [],
+    loads: [],
+    asked: list.match(/[A-Z]{2}/g) ?? [],
+  };
+}
+
 export function localParse(raw: string): ParseResult {
   const text = raw.replace(/\s+/g, ' ');
   const lower = text.toLowerCase();
@@ -106,7 +153,7 @@ export function localParse(raw: string): ParseResult {
   ] as const)
     // a beam held by a cable or loaded through a pulley is still a beam (the cable is an inclined roller)
     if (new RegExp(`\\b${word}`).test(lower) && !(/cable|cord|pulley/.test(word) && /\b(?:beam|boom|bar|rod|lever|shaft)\b/.test(lower)))
-      return { ok: false, comingSoon: true, reason: what };
+      return { ok: false, comingSoon: true, reason: what, ...(word === 'truss' ? { truss: trussFromText(raw) } : {}) };
 
   const p = blankProblem();
   p.text = raw.trim();

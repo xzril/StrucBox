@@ -28,12 +28,17 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(() => load('settings', defaultSettings));
   const [showSettings, setShowSettings] = useState(false);
   // shortcut: one truss, kept in localStorage; give trusses folders like beams once they are used
-  const [truss, setTruss] = useState<Truss>(() => load('truss', sampleTruss()));
+  // the truss on screen: a saved entry (id) or a new one (id null), the last one kept in localStorage
+  const [truss, setTruss] = useState<{ id: string | null; truss: Truss; file?: File }>(() => ({ id: null, truss: load('truss', sampleTruss()) }));
   const changeTruss = (t: Truss) => {
-    setTruss(t);
+    setTruss({ ...truss, truss: t });
     save('truss', t);
+    if (truss.id) updateLib(mapEntry(lib, truss.id, (e) => ({ ...e, problem: t, modified: now() })));
   };
-  const openTruss = () => setStage({ name: 'truss' });
+  const openTruss = () => {
+    setTruss({ id: null, truss: sampleTruss() });
+    setStage({ name: 'truss' });
+  };
   const [plan, setPlan] = useState<Plan>({ premium: false, provider: null });
   useEffect(() => {
     aiStatus().then(setPlan);
@@ -72,6 +77,10 @@ export default function App() {
   const open = (id: string, name: 'model' | 'confirm') => {
     const e = findEntry(lib, id);
     if (!e) return;
+    if ('kind' in e.problem) {
+      setTruss({ id, truss: e.problem });
+      return setStage({ name: 'truss' });
+    }
     setCurrent({ id, problem: e.problem });
     setStage(name === 'model' ? { name: 'model' } : { name: 'confirm' });
   };
@@ -91,6 +100,12 @@ export default function App() {
     if (picker?.moveId) {
       const e = findEntry(l, picker.moveId)!;
       return updateLib(addEntry(removeEntry(l, e.id), folderId, e));
+    }
+    if (stage.name === 'truss') {
+      const id = newId();
+      const image = truss.file && (await thumbnail(truss.file));
+      updateLib(addEntry(l, folderId, { id, problem: truss.truss, image, created: now(), modified: now() }));
+      return setTruss({ ...truss, id });
     }
     if (!current) return;
     const id = newId();
@@ -160,7 +175,12 @@ export default function App() {
             initialFile={stage.file}
             onManual={manual}
             onTruss={openTruss}
-            onParsed={(r, file) => (r.ok ? start(r.problem, file) : setStage({ name: 'soon', reason: r.reason }))}
+            onParsed={(r, file) => {
+              if (r.ok) return start(r.problem, file);
+              if (!r.truss) return setStage({ name: 'soon', reason: r.reason });
+              setTruss({ id: null, truss: r.truss, file });
+              setStage({ name: 'truss' });
+            }}
           />
         )}
         {stage.name === 'confirm' && current && (
@@ -176,7 +196,7 @@ export default function App() {
           <ModelScreen problem={current.problem} onChange={changeModel} settings={settings} onEdit={() => setStage({ name: 'confirm' })} C={C} plan={plan} />
         )}
         {stage.name === 'soon' && <ComingSoon reason={stage.reason} onBack={() => setStage({ name: 'home' })} onTruss={/truss/i.test(stage.reason) ? openTruss : undefined} />}
-        {stage.name === 'truss' && <TrussScreen truss={truss} onChange={changeTruss} C={C} />}
+        {stage.name === 'truss' && <TrussScreen key={truss.id ?? 'new'} truss={truss.truss} photo={truss.file} onChange={changeTruss} onSave={truss.id ? undefined : () => setPicker({})} C={C} />}
       </main>
 
       {picker && (

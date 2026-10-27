@@ -48,8 +48,11 @@ export function parseMembers(text: string): [string, string][] {
     .filter(([a, b]) => a && b);
 }
 
-export function TrussScreen({ truss: t, onChange, C }: { truss: Truss; onChange: (t: Truss) => void; C: Palette }) {
+export function TrussScreen({ truss: t, photo, onChange, onSave, C }: { truss: Truss; photo?: File; onChange: (t: Truss) => void; onSave?: () => void; C: Palette }) {
+  const [photoUrl] = useState(() => photo && URL.createObjectURL(photo));
   const [showSolution, setShowSolution] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [askedText, setAskedText] = useState(() => (t.asked ?? []).join(', '));
   const [membersText, setMembersText] = useState(() => t.members.map((m) => (m[0].length > 1 || m[1].length > 1 ? m.join('-') : memberName(m))).join(', '));
   const set = (patch: Partial<Truss>) => onChange({ ...t, ...patch });
   const u = t.units;
@@ -66,7 +69,9 @@ export function TrussScreen({ truss: t, onChange, C }: { truss: Truss; onChange:
     <div className="truss">
       <div className="card">
         <h2>Truss</h2>
-        <p className="muted">Joints are pins; loads act at the joints. x right, y up.</p>
+        <p className="muted">Joints are pins; loads act at the joints. x right, y up. Check every value against the figure.</p>
+        {photoUrl && <img className="truss-photo" src={photoUrl} alt="The problem's figure" />}
+        {t.text && <blockquote className="problem-text">{t.text}</blockquote>}
         <div className="grid">
           <label className="field">
             <span>Title</span>
@@ -143,6 +148,18 @@ export function TrussScreen({ truss: t, onChange, C }: { truss: Truss; onChange:
             onChange={(e) => {
               setMembersText(e.target.value);
               set({ members: parseMembers(e.target.value) });
+            }}
+          />
+        </label>
+
+        <label className="field">
+          <span>Members asked for (blank = all); a section is cut through them</span>
+          <input
+            value={askedText}
+            placeholder="e.g. BC, HC, HG"
+            onChange={(e) => {
+              setAskedText(e.target.value);
+              set({ asked: e.target.value.split(/[,;\s]+/).filter(Boolean) });
             }}
           />
         </label>
@@ -238,6 +255,7 @@ export function TrussScreen({ truss: t, onChange, C }: { truss: Truss; onChange:
       <div className="card">
         <div className="toolbar">
           <h2>{t.title || 'Truss'}</h2>
+          {onSave && <button onClick={onSave}>Save to folder</button>}
           <button className={showSolution ? 'primary' : ''} onClick={() => setShowSolution(!showSolution)}>
             {showSolution ? 'Hide solution' : 'Show solution'}
           </button>
@@ -246,7 +264,13 @@ export function TrussScreen({ truss: t, onChange, C }: { truss: Truss; onChange:
         {report && (
           <>
             <h3>Results</h3>
-            <ResultTable lines={report.lines} hidden={!showSolution} />
+            <ResultTable lines={report.lines.filter((l) => l.group !== 'notAsked')} hidden={!showSolution} />
+            {report.lines.some((l) => l.group === 'notAsked') && (
+              <label className="small">
+                <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show the other members
+              </label>
+            )}
+            {showAll && <ResultTable lines={report.lines.filter((l) => l.group === 'notAsked')} hidden={!showSolution} />}
             <p className="muted small">Tension positive. T = tension, C = compression.</p>
             {showSolution && (
               <>

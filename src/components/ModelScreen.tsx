@@ -67,6 +67,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
   const groupAsked: Record<ResultLine['group'], boolean> = {
     reactions: a.reactions,
     resultant: !!a.resultant,
+    notAsked: false,
     momentAbout: a.momentAbout.length > 0,
     internal: (a.internalAt ?? []).length > 0,
     maxValues: a.maxValues || a.shear || a.moment,

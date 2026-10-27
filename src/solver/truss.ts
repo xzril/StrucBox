@@ -27,6 +27,8 @@ export interface Truss {
   members: [string, string][];
   supports: TrussSupport[];
   loads: JointLoad[];
+  asked?: string[]; // members whose force is asked ("BC"); all of them if empty
+  answerKey?: string;
 }
 
 export interface TrussReaction {
@@ -60,6 +62,7 @@ export function joint(t: Truss, label: string): Joint {
 
 /** Method of joints for the whole truss at once: 2 equations per joint, solved together. */
 export function solveTruss(t: Truss): TrussOutcome {
+  if (t.joints.length < 2 || !t.members.length) return { ok: false, comingSoon: false, reason: 'Enter the joints and members from the figure.' };
   const labels = t.joints.map((j) => j.label);
   if (new Set(labels).size !== labels.length) return { ok: false, comingSoon: false, reason: 'Two joints have the same label.' };
   for (const ref of [...t.members.flat(), ...t.supports.map((s) => s.joint), ...t.loads.map((l) => l.joint)])

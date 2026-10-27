@@ -16,7 +16,7 @@ export interface Step {
 
 export interface ResultLine {
   key: string;
-  group: 'reactions' | 'resultant' | 'momentAbout' | 'internal' | 'maxValues' | 'deflection';
+  group: 'reactions' | 'resultant' | 'momentAbout' | 'notAsked' | 'internal' | 'maxValues' | 'deflection';
   label: string; // TeX
   value: string; // TeX
   note?: string;

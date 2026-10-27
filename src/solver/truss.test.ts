@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { truss } from './fixtures';
 import { parseMembers } from '../components/TrussScreen';
+import { fromAi, localParse } from '../input/parse';
 import { buildTrussReport } from '../lib/trussReport';
 import { memberName, solveTruss, type Truss, type TrussSolution } from './truss';
 
@@ -98,5 +99,62 @@ describe('truss worked steps', () => {
 describe('member list', () => {
   it('reads "AB, BC; A1-B1"', () => {
     expect(parseMembers('AB, BC; A1-B1')).toEqual([['A', 'B'], ['B', 'C'], ['A1', 'B1']]);
+  });
+});
+
+describe('method of sections', () => {
+  // 6-46: Ay = 8.25 kN; BC = 11 kN (T), CH = 1.25 kN (C), GH = 11.2 kN (C), CG = 10 kN (T)
+  const t = {
+    ...truss(
+      [['A', 0, 0], ['B', 4, 0], ['C', 8, 0], ['D', 12, 0], ['E', 16, 0], ['H', 4, 3], ['G', 8, 5], ['F', 12, 3]],
+      ['AB', 'BC', 'CD', 'DE', 'AH', 'HG', 'GF', 'FE', 'BH', 'CH', 'CG', 'CF', 'DF'],
+      [{ joint: 'A', type: 'pin' }, { joint: 'E', type: 'roller' }],
+      [['B', 0, -4], ['C', 0, -8], ['D', 0, -5]],
+    ),
+    asked: ['BC', 'CH', 'GH', 'CG'],
+  };
+
+  it('6-46: forces match the manual', () => {
+    const s = ok(t);
+    expect(s.reactions[0].Ry).toBeCloseTo(8.25, 9);
+    expectForces(t, s, { BC: 11, CH: -1.25, HG: -11.18, CG: 10, GF: -11.18 });
+  });
+
+  it('6-46: moments about H for BC, about C for GH, and about where GH meets AB extended for CH', () => {
+    const r = buildTrussReport(t, ok(t));
+    const sec = (m: string) => r.steps.find((s) => s.title.startsWith('Section') && s.title.endsWith(`: ${m}`))!;
+    expect(sec('BC').tex[0]).toBe('\\circlearrowleft +\\ \\sum M_{H} = 0:\\quad F_{BC}(3) - 8.25(4) = 0');
+    expect(sec('HG').tex[0]).toContain('\\sum M_{C} = 0');
+    expect(sec('CH').tex[0]).toContain('\\sum M_{O} = 0');
+    expect(sec('CH').text).toContain('the point (-2, 0)');
+    expect(r.lines.filter((l) => l.group === 'internal').map((l) => l.key)).toEqual(['FBC', 'FHG', 'FCH', 'FCG']);
+  });
+});
+
+describe('reading a truss problem', () => {
+  it('offline: the text gives units and the asked members, geometry comes from the form', () => {
+    const r = localParse('Determine the force in members BC, CH, GH and CG of the truss and state if the members are in tension or compression. 4 kN, 8 kN, 5 kN.');
+    expect(r).toMatchObject({ ok: false, truss: { units: { force: 'kN' }, asked: ['BC', 'CH', 'GH', 'CG'], joints: [] } });
+  });
+
+  it('AI: joints, members and loads as drawn are mapped to a truss the solver takes', () => {
+    const r = fromAi(
+      {
+        structure: 'truss',
+        title: '6-9',
+        units: { system: 'SI', force: 'kN', length: 'm' },
+        truss: {
+          joints: [{ label: 'A', x: 0, y: 0 }, { label: 'B', x: 4, y: 0 }, { label: 'C', x: 8, y: 0 }, { label: 'D', x: 12, y: 0 }, { label: 'E', x: 6, y: 6 }],
+          members: ['AB', 'BC', 'CD', 'AE', 'BE', 'CE', 'DE'],
+          supports: [{ joint: 'A', type: 'pin', angle: 90 }, { joint: 'D', type: 'roller', angle: 90 }],
+          loads: [{ joint: 'B', F: 3, dirX: 0, dirY: -1 }, { joint: 'C', F: 6, dirX: 0, dirY: -1 }],
+          askedMembers: [],
+        },
+      },
+      '',
+    );
+    if (r.ok || !r.truss) throw new Error('expected a truss');
+    expect(r.truss.supports[1]).toEqual({ joint: 'D', type: 'roller' });
+    expectForces(r.truss, ok(r.truss), { AE: -5.66, BE: 3.16 });
   });
 });
