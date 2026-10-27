@@ -32,11 +32,12 @@ const PROBLEM_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['type', 'x', 'y', 'label'],
+        required: ['type', 'x', 'y', 'angle', 'label'],
         properties: {
           type: { type: 'string', enum: ['pin', 'roller', 'fixed', 'free'] },
           x: { type: 'number' },
           y: { type: 'number', description: 'height above the beam axis when the support sits on a rigid arm (L-shaped member); 0 otherwise' },
+          angle: { type: 'number', description: 'roller only: direction of its reaction in degrees counter-clockwise from +x: 90 for an ordinary roller; tilted for a rocker, a roller on an incline (normal to the surface), or a cable/link/strut (along it, toward where the cable is anchored); 90 when unused' },
           label: { type: 'string' },
         },
       },
@@ -77,9 +78,10 @@ const PROBLEM_SCHEMA = {
     asked: {
       type: 'object',
       additionalProperties: false,
-      required: ['reactions', 'momentAbout', 'internalAt', 'shear', 'moment', 'maxValues', 'deflection'],
+      required: ['reactions', 'resultant', 'momentAbout', 'internalAt', 'shear', 'moment', 'maxValues', 'deflection'],
       properties: {
         reactions: { type: 'boolean' },
+        resultant: { type: 'boolean', description: 'the equivalent resultant force of the loads and its location asked ("replace the loading by an equivalent resultant force and specify its location")' },
         momentAbout: { type: 'array', items: { type: 'string' }, description: 'labels of points the moment of the loads is asked about ("moment of the forces about O")' },
         internalAt: { type: 'array', items: { type: 'string' }, description: 'labels of points where the internal shear and bending moment are asked ("internal shear and moment at C"); add the point to points if it is not a support' },
         shear: { type: 'boolean', description: 'shear force diagram asked' },
@@ -106,7 +108,7 @@ const PROBLEM_SCHEMA = {
 const PARSE_SYSTEM = `You read textbook statics problems and convert them to a JSON description of a beam. Do not solve the problem.
 Rules:
 - x is measured from the beam's left end in the problem's length unit. Use the problem's own units (SI or US customary).
-- Supports: pin, roller, fixed, or free (free end). Label supports and points with the letters used in the problem (e.g. O, A, B).
+- Supports: pin, roller, fixed, or free (free end). A cable, link, strut, rocker or smooth inclined surface holding the beam at one point is a "roller" whose angle is the direction of its force. Label supports and points with the letters used in the problem (e.g. O, A, B).
 - Coordinates: x along the beam from its left end, y up from the beam axis. An L-shaped member is the beam plus a rigid arm: give the support (or point) at the arm's end its y.
 - Loads: "point" (P is the printed magnitude; dirX, dirY give the direction it points, copied from the slope triangle or angle without resolving: 500 N up and to the right on a 3-4-5 triangle with the 4 horizontal is dirX = 4, dirY = 3; a downward load is dirX = 0, dirY = -1), "dist" for uniform or linearly varying (triangular) loads (w1 at x1, w2 at x2), "moment" for an applied couple with its direction.
 - Unused numeric fields are 0. Use dir "cw" when unused.

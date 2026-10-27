@@ -60,7 +60,7 @@ export function fromAi(j: any, text: string): ParseResult {
     if (l.kind === 'moment') return { id: newId(), kind: 'moment', x: l.x, M: l.M, dir: l.dir, label: l.label || undefined };
     return { id: newId(), kind: 'dist', x1: l.x1, x2: l.x2, w1: l.w1, w2: l.w2, label: l.label || undefined };
   });
-  const supports: Support[] = (j.supports ?? []).map((s: any) => ({ id: newId(), type: s.type, x: s.x, y: s.y || undefined, label: s.label || '?' }));
+  const supports: Support[] = (j.supports ?? []).map((s: any) => ({ id: newId(), type: s.type, x: s.x, y: s.y || undefined, angle: s.type === 'roller' && s.angle && s.angle !== 90 ? s.angle : undefined, label: s.label || '?' }));
   return {
     ok: true,
     problem: {
@@ -188,7 +188,9 @@ export function localParse(raw: string): ParseResult {
 
   p.asked = emptyAsked();
   p.asked.reactions = /reaction/.test(lower);
-  const about = [...text.matchAll(/moment (?:of [a-z ]{0,30})?about (?:point )?([A-Z])\b/gi)].map((m) => m[1].toUpperCase());
+  p.asked.resultant = /resultant/.test(lower);
+  // "moment of the forces about O"; "resultant force and couple moment at A" is the same thing
+  const about = [...text.matchAll(/(?:moment (?:of [a-z ]{0,30})?about|couple moment (?:acting )?at) (?:point )?([A-Z])\b/gi)].map((m) => m[1].toUpperCase());
   p.asked.momentAbout = about;
   // "the internal shear and moment at C", "shear force and bending moment at point C"
   const internal = [...text.matchAll(/(?:internal|shear|normal force|moment)[a-z ,]{0,60}?\bat (?:points? )?([A-Z])\b(?:\s*and\s*([A-Z])\b)?/gi)]

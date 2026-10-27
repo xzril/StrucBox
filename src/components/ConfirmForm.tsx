@@ -105,6 +105,7 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
               <th>Type</th>
               <th>x ({u.length})</th>
               <th title="Height of the support above the beam, when it sits on an arm (an L-shaped member). Usually 0.">y, arm ({u.length})</th>
+              <th title="Rollers only: direction of the reaction, degrees counter-clockwise from the +x axis. 90 = straight up. Use it for a rocker, a roller on an incline, or a cable or link (along the cable).">reaction angle (°)</th>
               <th />
             </tr>
           </thead>
@@ -128,6 +129,7 @@ export function ConfirmForm({ problem: p, onChange, onBack, onBuild, onComingSoo
                 <td>
                   <Num value={s.y ?? 0} onChange={(y) => setSupport(i, { y })} />
                 </td>
+                <td>{s.type === 'roller' && <Num value={s.angle ?? 90} onChange={(a) => setSupport(i, { angle: a === 90 ? undefined : a })} />}</td>
                 <td>
                   <button className="icon" title="Remove" onClick={() => set({ supports: p.supports.filter((_, j) => j !== i) })}>
                     ✕
@@ -326,6 +328,7 @@ export function AskedChecks({ problem: p, onChange }: { problem: Problem; onChan
       {(
         [
           ['reactions', 'Support reactions'],
+          ['resultant', 'Equivalent resultant force and its location'],
           ['shear', 'Shear force diagram'],
           ['moment', 'Bending moment diagram'],
           ['maxValues', 'Maximum shear and moment'],
@@ -333,7 +336,7 @@ export function AskedChecks({ problem: p, onChange }: { problem: Problem; onChan
         ] as const
       ).map(([k, text]) => (
         <label key={k}>
-          <input type="checkbox" checked={p.asked[k]} onChange={(e) => set({ asked: { ...p.asked, [k]: e.target.checked } })} /> {text}
+          <input type="checkbox" checked={!!p.asked[k]} onChange={(e) => set({ asked: { ...p.asked, [k]: e.target.checked } })} /> {text}
         </label>
       ))}
       {labels.map((l) => (

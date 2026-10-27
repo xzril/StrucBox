@@ -132,7 +132,10 @@ export function BeamView3D({ problem: p, solution: s, showSolution, bend, onMove
             </group>
           ) : (
             <group key={sp.id} position={[wx(sp.x), bottom(sp.x), 0]}>
-              <SupportGlyph type={sp.type} atRight={sp.x > L / 2} color={C.support} />
+              {/* an inclined roller (rocker, incline, cable) tilts so its reaction points along its angle */}
+              <group rotation={[0, 0, sp.type === 'roller' && sp.angle !== undefined ? ((sp.angle - 90) * Math.PI) / 180 : 0]}>
+                <SupportGlyph type={sp.type} atRight={sp.x > L / 2} color={C.support} />
+              </group>
               <Html position={[sp.x > L / 2 ? 0.55 : -0.55, -0.35, D]} center className="label support-label">
                 {sp.label}
               </Html>

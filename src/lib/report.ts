@@ -1,9 +1,9 @@
 // Turns a Solution into display-ready results, worked steps (TeX), and a short
 // template explanation. All numbers come from the solver (D24).
 
-import { distResultant } from '../solver/loads';
+import { distResultant, loadsMomentAbout, totalDownward, totalRight } from '../solver/loads';
 import { add, scale, shiftedPow, type Poly } from '../solver/poly';
-import { momentAboutPoint, pointAt, valueAt, type Solution } from '../solver/solve';
+import { momentAboutPoint, pointAt, valueAt, type Reaction, type Solution } from '../solver/solve';
 import type { PointLoad, Problem } from '../solver/types';
 import { fmt, rotWord, showForce, showInternal, showMoment, type SignConvention } from './format';
 import { deflectionUnit, eiInProblemUnits, toDeflectionUnit, unitStr } from './units';
@@ -16,7 +16,7 @@ export interface Step {
 
 export interface ResultLine {
   key: string;
-  group: 'reactions' | 'momentAbout' | 'internal' | 'maxValues' | 'deflection';
+  group: 'reactions' | 'resultant' | 'momentAbout' | 'internal' | 'maxValues' | 'deflection';
   label: string; // TeX
   value: string; // TeX
   note?: string;
@@ -44,11 +44,20 @@ const q = (n: number, u: string) => `${fmt(n)}\\ ${unitTex(u)}`;
 /** cos or sin of an inclined force as TeX: a slope-triangle fraction (4/5) when its sides are small whole numbers, else the angle. */
 function dirFactor(part: number, l: PointLoad, trig: 'cos' | 'sin'): string {
   const F = Math.hypot(l.P, l.Px ?? 0);
-  const [a, b] = [Math.abs(l.Px ?? 0) / F, Math.abs(l.P) / F];
+  return trigTex(Math.abs(l.Px ?? 0) / F, Math.abs(l.P) / F, Math.abs(part) / F, trig);
+}
+/** a = |cos|, b = |sin| of the direction, r = the one wanted. */
+function trigTex(a: number, b: number, r: number, trig: 'cos' | 'sin'): string {
   // 1e-4: an angle typed as 36.87° still reads as the 3-4-5 triangle
   for (let c = 2; c <= 25; c++)
-    if ([a, b].every((r) => Math.abs(r * c - Math.round(r * c)) < 1e-4)) return `\\left(\\tfrac{${Math.round((Math.abs(part) / F) * c)}}{${c}}\\right)`;
+    if ([a, b].every((v) => Math.abs(v * c - Math.round(v * c)) < 1e-4)) return `\\left(\\tfrac{${Math.round(r * c)}}{${c}}\\right)`;
   return `\\${trig} ${fmt((Math.atan2(b, a) * 180) / Math.PI)}^\\circ`;
+}
+/** cos (x part) or sin (y part) of an inclined roller's reaction. */
+function rollerFactor(r: Reaction, trig: 'cos' | 'sin'): string {
+  const th = (r.angle! * Math.PI) / 180;
+  const [a, b] = [Math.abs(Math.cos(th)), Math.abs(Math.sin(th))];
+  return trigTex(a, b, trig === 'cos' ? a : b, trig);
 }
 
 /** p(t) with t = x - a, rewritten as a polynomial in x. */
@@ -111,13 +120,19 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
         ? `${r.label} (fixed): ${r.label}_x, ${r.label}_y and M_${r.label}`
         : r.type === 'pin'
           ? `${r.label} (pin): ${r.label}_x and ${r.label}_y`
-          : `${r.label} (roller): ${r.label}_y`,
+          : r.angle !== undefined
+            ? `${r.label} (inclined roller): N_${r.label}, acting at ${fmt(r.angle)}° from the x axis`
+            : `${r.label} (roller): ${r.label}_y`,
     )
     .join('; ');
   steps.push({
     title: 'Free-body diagram',
     text: `Replace the supports with reactions: ${supText}. ${
-      inclined.length ? 'Resolve each inclined force into its x and y components.' : 'With no horizontal loads, ΣFx = 0 gives every horizontal reaction as zero.'
+      inclined.length
+        ? 'Resolve each inclined force into its x and y components.'
+        : s.reactions.some((r) => r.angle !== undefined)
+          ? "The inclined roller's reaction has x and y components, so the pin takes a horizontal reaction too."
+          : 'With no horizontal loads, ΣFx = 0 gives every horizontal reaction as zero.'
     }${
       dists.length ? ' Replace each distributed load with its resultant acting at its centroid.' : ''
     }`,
@@ -158,13 +173,27 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
     const A = r1.type === 'pin' ? r1 : r2;
     const B = A === r1 ? r2 : r1;
     const dB = B.x - A.x;
-    const mTerms = [{ sign: Math.sign(dB) * mSign, tex: `${B.label}_y(${fmt(Math.abs(dB))})` }, ...loadTerms(A.x, A.y)];
+    const dBy = B.y - A.y;
+    const tilted = B.angle !== undefined;
+    // an inclined roller: its y part times the horizontal arm, its x part times the vertical arm
+    const bTerms = tilted
+      ? [
+          ...(Math.abs(B.Ry) > 1e-9 ? [{ sign: Math.sign(B.Ry / B.R! * dB) * mSign, tex: `N_{${B.label}}${rollerFactor(B, 'sin')}(${fmt(Math.abs(dB))})` }] : []),
+          ...(Math.abs(B.Rx) > 1e-9 && Math.abs(dBy) > 1e-9 ? [{ sign: Math.sign(-B.Rx / B.R! * dBy) * mSign, tex: `N_{${B.label}}${rollerFactor(B, 'cos')}(${fmt(Math.abs(dBy))})` }] : []),
+        ]
+      : [{ sign: Math.sign(dB) * mSign, tex: `${B.label}_y(${fmt(Math.abs(dB))})` }];
+    const mTerms = [...bTerms, ...loadTerms(A.x, A.y)];
     steps.push({
       title: `Moments about ${A.label}`,
       tex: [
         `${mDirTex}\\ \\sum M_{${A.label}} = 0:`,
         `${joinTerms(mTerms)} = 0`,
-        `${B.label}_y = ${q(B.Ry, F)}`,
+        ...(tilted
+          ? [
+              `N_{${B.label}} = ${q(B.R!, F)}`,
+              `${B.label}_x = ${q(B.Rx, F)},\\quad ${B.label}_y = ${q(B.Ry, F)}`,
+            ]
+          : [`${B.label}_y = ${q(B.Ry, F)}`]),
       ],
     });
     steps.push({
@@ -196,12 +225,17 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
   }
 
   const held = s.reactions.find((r) => r.type !== 'roller');
-  if (inclined.length && held)
+  const tilted = s.reactions.find((r) => r.angle !== undefined);
+  if ((inclined.length || tilted) && held)
     steps.push({
       title: 'Horizontal equilibrium',
       tex: [
         `\\rightarrow +\\ \\sum F_x = 0:`,
-        `${joinTerms([{ sign: 1, tex: `${held.label}_x` }, ...inclined.map((l) => ({ sign: Math.sign(l.Px!), tex: fmt(Math.abs(l.Px!)) }))])} = 0`,
+        `${joinTerms([
+          { sign: 1, tex: `${held.label}_x` },
+          ...(tilted && Math.abs(tilted.Rx) > 1e-9 ? [{ sign: Math.sign(tilted.Rx), tex: fmt(Math.abs(tilted.Rx)) }] : []),
+          ...inclined.map((l) => ({ sign: Math.sign(l.Px!), tex: fmt(Math.abs(l.Px!)) })),
+        ])} = 0`,
         `${held.label}_x = ${q(held.Rx, F)}`,
       ],
     });
@@ -211,6 +245,8 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
   if (!(a.reactions || a.shear || a.moment || a.maxValues || a.deflection || (a.internalAt ?? []).length)) steps.splice(eqFrom);
 
   for (const r of s.reactions) {
+    if (r.angle !== undefined)
+      lines.push({ key: `N${r.label}`, group: 'reactions', label: `N_{${r.label}}`, value: q(Math.abs(r.R!), F), note: `${r.R! >= 0 ? 'along' : 'against'} ${fmt(r.angle)}°` });
     const v = showForce(r.Ry, c);
     lines.push({
       key: `R${r.label}`,
@@ -219,7 +255,7 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
       value: q(v, F),
       note: Math.abs(r.Ry) < 1e-9 ? undefined : r.Ry > 0 ? 'upward' : 'downward',
     });
-    if (r.type !== 'roller')
+    if (r.type !== 'roller' || r.angle !== undefined)
       lines.push({ key: `Rx${r.label}`, group: 'reactions', label: `${r.label}_x`, value: q(r.Rx, F), note: Math.abs(r.Rx) < 1e-9 ? undefined : r.Rx > 0 ? 'to the right' : 'to the left' });
     if (r.type === 'fixed')
       lines.push({ key: `M${r.label}`, group: 'reactions', label: `M_{${r.label}}`, value: q(showMoment(r.M!, c), FL), note: rotWord(r.M!) });
@@ -233,6 +269,29 @@ export function buildReport(p: Problem, s: Solution, c: SignConvention): Report 
         ? `The reactions keep the beam in equilibrium: together they carry the total load (ΣFy = 0), and their moments balance those of the loads (ΣM = 0). The support nearer the resultant load carries the larger share, here ${r1.label}y = ${fmt(r1.Ry)} ${F} and ${r2.label}y = ${fmt(r2.Ry)} ${F}.`
         : `A fixed support resists both translation and rotation. Its vertical reaction balances the total vertical load (${r1.label}y = ${fmt(r1.Ry)} ${F}), and its moment, ${fmt(Math.abs(r1.M!))} ${FL} ${rotWord(r1.M!)}, balances the turning effect of the loads about the support.`,
     );
+  }
+
+  // ---- equivalent resultant force (Hibbeler 4.9): F_R = ΣF, located so that F_R x̄ = ΣM about the left end
+  if (p.asked.resultant) {
+    const FR = totalDownward(p.loads);
+    const FRx = totalRight(p.loads);
+    const M0 = loadsMomentAbout(p.loads, 0);
+    const from = p.supports.find((sp) => Math.abs(sp.x) < 1e-9 && !sp.y)?.label ?? p.points.find((pt) => Math.abs(pt.x) < 1e-9 && !pt.y)?.label ?? 'the left end';
+    const tex = [`${fDirTex}\\ F_R = \\sum F_y = ${joinTerms(downTerms)} = ${q(showForce(-FR, c), F)}`];
+    if (Math.abs(FRx) > 1e-9) tex.push(`\\rightarrow +\\ (F_R)_x = \\sum F_x = ${q(FRx, F)}`);
+    if (Math.abs(FR) > 1e-9) {
+      tex.push(`F_R\\,\\bar{x} = \\sum M:\\quad ${fmt(Math.abs(FR))}\\,\\bar{x} = ${joinTerms(loadTerms(0).map((t) => ({ ...t, sign: t.sign * -mSign * Math.sign(FR) })))}`);
+      tex.push(`\\bar{x} = ${q(-M0 / FR, u.length)}\\ \\text{from ${from}}`);
+    }
+    steps.push({
+      title: 'Equivalent resultant force',
+      text: `Replace the loads with one force: it equals their sum, and acts where its moment about ${from} equals the moment of the loads.`,
+      tex,
+    });
+    lines.push({ key: 'FR', group: 'resultant', label: 'F_R', value: q(Math.abs(FR), F), note: Math.abs(FR) < 1e-9 ? undefined : FR > 0 ? 'downward' : 'upward' });
+    if (Math.abs(FRx) > 1e-9) lines.push({ key: 'FRx', group: 'resultant', label: '(F_R)_x', value: q(FRx, F), note: FRx > 0 ? 'to the right' : 'to the left' });
+    if (Math.abs(FR) > 1e-9) lines.push({ key: 'xbar', group: 'resultant', label: '\\bar{x}', value: q(-M0 / FR, u.length), note: `from ${from}` });
+    else if (Math.abs(M0) > 1e-9) lines.push({ key: 'MR', group: 'resultant', label: 'M_R', value: q(showMoment(M0, c), FL), note: `${rotWord(M0)}, the loads reduce to a couple` });
   }
 
   // ---- moments about named points

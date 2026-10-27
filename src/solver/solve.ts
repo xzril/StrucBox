@@ -10,8 +10,10 @@ export interface Reaction {
   y: number; // height of the support above the beam axis (0 unless it sits on an arm)
   type: 'pin' | 'roller' | 'fixed';
   Ry: number; // up positive
-  Rx: number; // right positive; a roller's is 0
+  Rx: number; // right positive; a roller's is 0 unless it is inclined
   M?: number; // fixed-end moment, counter-clockwise positive
+  angle?: number; // inclined roller: its reaction acts along this direction (degrees from +x), size R
+  R?: number;
 }
 
 /** One segment between breakpoints. Polys are in t = x - a. */
@@ -52,11 +54,13 @@ export function solve(p: Problem): SolveOutcome {
   if (v.kind === 'simple') {
     const A = v.primary;
     const B = v.secondary!;
-    // ΣM_A = 0: R_B (x_B - x_A) + ΣM_loads,A = 0
-    const RB = -loadsMomentAbout(p.loads, A.x, A.y) / (B.x - A.x);
-    const RA = totalDownward(p.loads) - RB;
-    reactions.push({ supportId: A.id, label: A.label, x: A.x, y: A.y ?? 0, type: 'pin', Ry: RA, Rx: -totalRight(p.loads) });
-    reactions.push({ supportId: B.id, label: B.label, x: B.x, y: B.y ?? 0, type: 'roller', Ry: RB, Rx: 0 });
+    // ΣM_A = 0: R_B along (cos θ, sin θ) at B, moment R_B (sin θ Δx - cos θ Δy), plus ΣM_loads,A = 0
+    const th = ((B.angle ?? 90) * Math.PI) / 180;
+    const [c, sn] = B.angle === undefined ? [0, 1] : [Math.cos(th), Math.sin(th)];
+    const R = -loadsMomentAbout(p.loads, A.x, A.y) / (sn * (B.x - A.x) - c * ((B.y ?? 0) - (A.y ?? 0)));
+    const [RBx, RBy] = [R * c, R * sn];
+    reactions.push({ supportId: A.id, label: A.label, x: A.x, y: A.y ?? 0, type: 'pin', Ry: totalDownward(p.loads) - RBy, Rx: -totalRight(p.loads) - RBx });
+    reactions.push({ supportId: B.id, label: B.label, x: B.x, y: B.y ?? 0, type: 'roller', Ry: RBy, Rx: RBx, ...(B.angle === undefined ? {} : { angle: B.angle, R }) });
     reactions.sort((r1, r2) => r1.x - r2.x);
   } else {
     const F = v.primary;

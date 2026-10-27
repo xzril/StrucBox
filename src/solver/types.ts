@@ -10,6 +10,7 @@ export interface Support {
   x: number;
   label: string; // e.g. "O", "A", "B"
   y?: number; // the support sits on a rigid arm this high above the beam axis (an L-shaped member); 0 if omitted
+  angle?: number; // roller only: direction of its reaction in degrees, counter-clockwise from +x (a rocker, a roller on an incline, a cable or link); 90 (straight up) if omitted
 }
 
 export interface PointLoad {
@@ -72,6 +73,7 @@ export interface NamedPoint {
 export interface Asked {
   reactions: boolean;
   momentAbout: string[]; // point labels, e.g. ["O"]
+  resultant?: boolean; // the single resultant force equivalent to the loads, and where it acts
   internalAt?: string[]; // labels where the internal shear and moment are asked ("V and M at C")
   shear: boolean; // SFD
   moment: boolean; // BMD
