@@ -1,0 +1,10 @@
+{
+  "name": "StrucBox",
+  "short_name": "StrucBox",
+  "description": "Turn a textbook beam, truss or cable problem into an interactive 3D model with worked solutions.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e3a5f",
+  "theme_color": "#1e3a5f",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

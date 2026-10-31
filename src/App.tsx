@@ -140,7 +140,7 @@ export default function App() {
         )}
         <span
           className={`plan ${plan.premium ? 'premium' : ''}`}
-          title={plan.premium ? 'AI tools are on (API key found).' : WEB_BUILD ? 'Online test version: free offline app only.' : 'Offline version. Run SetApiKey.bat to unlock the AI tools.'}
+          title={plan.premium ? 'AI tools are on (API key found).' : WEB_BUILD ? 'Online version: the free app.' : 'Offline version. Run SetApiKey.bat to unlock the AI tools.'}
         >
           {plan.premium ? `PREMIUM · AI (${providerName(plan.provider)})` : 'FREE · offline'}
         </span>
