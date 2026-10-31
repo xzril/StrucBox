@@ -305,7 +305,7 @@ export function ModelScreen({ problem: p, settings, onChange, onEdit, C, plan }:
           ) : (
             <p className="locked">
               🔒 AI reading of photos, AI explanations with answer-key checks, and an ask-the-tutor box come with Premium.{' '}
-              {WEB_BUILD ? 'This online test version is the free offline app only.' : 'Run SetApiKey.bat with a Claude or Gemini key, then restart StrucBox.'}
+              {WEB_BUILD ? 'This online version is the free app only.' : 'Run SetApiKey.bat with a Claude or Gemini key, then restart StrucBox.'}
             </p>
           )}
         </section>

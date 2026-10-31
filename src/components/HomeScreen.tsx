@@ -94,6 +94,7 @@ export function HomeScreen({ lib, onLib, onOpen, onEdit, onMove, onDuplicate, on
           </label>
         </div>
         {lib.folders.length === 0 && <p className="muted center-text">No problems yet. Take a photo of one, or add one manually.</p>}
+        <p className="muted small center-text">Saved problems stay in this browser on this device only.</p>
         {lib.folders.map((f) => {
           const items = sortItems(f.items, lib.sort).filter(matches);
           return (
